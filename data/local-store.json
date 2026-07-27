@@ -1,0 +1,702 @@
+{
+  "sessions": {
+    "f7e3b90c-2b59-4f5c-b0eb-f28e78212d3c": {
+      "id": "f7e3b90c-2b59-4f5c-b0eb-f28e78212d3c",
+      "status": "bot",
+      "assignedTo": null,
+      "createdAt": "2026-07-26T10:59:34.352Z",
+      "updatedAt": "2026-07-26T11:45:01.111Z",
+      "messages": [
+        {
+          "id": "4995955a-ecce-498c-8992-47eb5613da7c",
+          "role": "user",
+          "text": "Tìm giày bóng chuyền đang còn hàng",
+          "createdAt": "2026-07-26T10:59:41.801Z"
+        },
+        {
+          "id": "453db4c6-fc5f-4e56-8b7f-33dd1ffcd541",
+          "role": "assistant",
+          "text": "Tìm được 5 giày bóng chuyền đang còn hàng. Các mẫu Mizuno đều có nhiều size và màu sắc để bạn chọn, từ dòng Thunder Blade Z giá 1.6 triệu đến Wave Lightning Z8 Mid cao cấp hơn. Bạn có muốn xem chi tiết hoặc tìm loại giày cụ thể nào không?",
+          "createdAt": "2026-07-26T10:59:52.877Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320735",
+            "1074320494",
+            "1074320501",
+            "1074320499"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "brief"
+          }
+        },
+        {
+          "id": "ce920aa9-a530-4ea8-b39e-6d55feaf76d0",
+          "role": "user",
+          "text": "Cho tôi xem sản phẩm đang khuyến mãi",
+          "createdAt": "2026-07-26T11:06:15.172Z"
+        },
+        {
+          "id": "a9fd4ec5-697b-45ea-9e07-9701b50f33a7",
+          "role": "assistant",
+          "text": "Mình tìm được 5 sản phẩm đang khuyến mãi từ Mizuno. Nổi bật nhất là Váy Nữ Stargazer (hồng) giảm từ 1.15 triệu xuống còn 1.035 triệu. Các sản phẩm khác gồm áo Tank Top, váy Flying Skirt và các váy Stargazer khác với giá từ 800k đến 1.15 triệu, đều còn hàng. Bạn muốn xem chi tiết sản phẩm nào không?",
+          "createdAt": "2026-07-26T11:06:25.144Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074537156",
+            "1074320754",
+            "1074320750",
+            "1074320756",
+            "1074320757"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "recommend"
+          }
+        },
+        {
+          "id": "e3feb63f-6ac1-4b53-a397-086eb844dcd4",
+          "role": "user",
+          "text": "admin",
+          "createdAt": "2026-07-26T11:41:18.981Z"
+        },
+        {
+          "id": "b015ff4b-430a-499f-8ffe-298ad14baedb",
+          "role": "assistant",
+          "text": "Mình đã chuyển yêu cầu sang nhân viên. Bạn cứ để lại nội dung cần hỗ trợ tại đây, nhân viên sẽ trả lời trực tiếp trong cửa sổ chat này.",
+          "createdAt": "2026-07-26T11:41:18.984Z",
+          "source": "handoff"
+        },
+        {
+          "id": "3da19b8b-db66-47f8-8e5e-d1b22b7a8741",
+          "role": "admin",
+          "text": "alo",
+          "createdAt": "2026-07-26T11:41:31.812Z",
+          "adminName": "Nhân viên GHS"
+        },
+        {
+          "id": "263e78c9-88f7-4977-bbc0-3991315bda8a",
+          "role": "user",
+          "text": "tôi muốn hỗ trợ",
+          "createdAt": "2026-07-26T11:41:41.466Z"
+        },
+        {
+          "id": "8d21c278-c736-42de-a2d6-31e39a9d4c97",
+          "role": "admin",
+          "text": "Nhân viên GHS đã tham gia cuộc trò chuyện.",
+          "createdAt": "2026-07-26T11:41:48.008Z",
+          "systemNotice": true
+        },
+        {
+          "id": "92d8e851-81e4-46b4-9680-304dac1c7f36",
+          "role": "assistant",
+          "text": "Cuộc trò chuyện đã được chuyển lại cho trợ lý AI. Bạn vẫn có thể gõ “admin” khi cần gặp nhân viên.",
+          "createdAt": "2026-07-26T11:45:01.111Z",
+          "source": "handoff"
+        }
+      ]
+    },
+    "75dfa0dc-c041-4dd9-915a-7a5e5500bf3e": {
+      "id": "75dfa0dc-c041-4dd9-915a-7a5e5500bf3e",
+      "status": "bot",
+      "assignedTo": null,
+      "createdAt": "2026-07-26T11:08:07.629Z",
+      "updatedAt": "2026-07-26T14:02:45.128Z",
+      "messages": [
+        {
+          "id": "52f7a071-fba6-4901-b39f-f64e1f38598b",
+          "role": "user",
+          "text": "Gợi ý giày chạy bộ đang giảm giá",
+          "createdAt": "2026-07-26T11:09:48.997Z"
+        },
+        {
+          "id": "9dd152e9-5247-49a9-bfb4-38cc86fa7f68",
+          "role": "assistant",
+          "text": "Em gợi ý 5 giày chạy bộ đang giảm giá từ Mizuno:\n\n1. **Giày Chạy Bộ Mizuno Esperanza** - Giảm từ 1.802M xuống 1.335M (26% off). Form 4E rộng, đệm SOFTIERFOAM+ êm, phù hợp người mới chạy. Còn hàng.\n\n2. **Giày Chạy Bộ Mizuno Enerzy Runnerz Wide K1** - Giảm từ 2.4M xuống 2.16M (10% off). Đệm Enerzy Foam, wide fit thoải mái, có phản quang ban đêm. Còn hàng.\n\n3. **Giày Chạy Bộ Mizuno Wave Inspire 21 2E** - Giảm từ 3.309M xuống 2.45M (26% off). Công nghệ Wave ổn định, êm với Enerzy Foam, tốt cho chạy thường xuyên. Còn hàng.\n\n4. **Giày Chạy Bộ Mizuno Wave Rider 28 Ultra Wide Last 4E** - Giảm từ 3.323M xuống 2.46M (26% off). Dáng 4E ultra rộng, Wave Plate ổn định, daily trainer đa năng. Còn hàng, nhiều màu sắc.\n\n5. **Giày Chạy Bộ Mizuno Wave Revolt 3** - Giảm từ 2.371M xuống 1.755M (26% off). Đệm Enerzy Foam, Wave kép, phù hợp runner mới. Có size 6.0 còn hàng.\n\nKhách có thể xem chi tiết, so sánh màu/size và giỏ hàng ngay trên giao diện!",
+          "createdAt": "2026-07-26T11:10:03.693Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320568",
+            "1074320563",
+            "1074320583",
+            "1074320587",
+            "1074320586"
+          ],
+          "route": {
+            "intent": "product_recommendation",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "recommend"
+          }
+        },
+        {
+          "id": "7febff1c-ea0d-464f-8210-761ece4b176a",
+          "role": "user",
+          "text": "wave claw 4",
+          "createdAt": "2026-07-26T11:10:11.016Z"
+        },
+        {
+          "id": "3611e9f8-f0a3-4fef-af8f-31604b95ce7e",
+          "role": "assistant",
+          "text": "Mình đã tìm thấy 5 sản phẩm gần với nhu cầu của bạn. Bạn xem ảnh, giá, màu, size và mở trang chi tiết ngay trên các thẻ bên dưới nhé.",
+          "createdAt": "2026-07-26T11:10:15.243Z",
+          "source": "local-after-ai-error",
+          "productIds": [
+            "1074328177",
+            "1074320523",
+            "1074320529",
+            "1074320532",
+            "1074320540"
+          ],
+          "route": null
+        },
+        {
+          "id": "7dbc28d0-ff7a-4276-8a38-98b181f5cb6b",
+          "role": "assistant",
+          "text": "Đã lưu đơn nháp GHS-20260726-0F1D. Nhân viên sẽ kiểm tra và liên hệ với bạn qua số 0961286582.",
+          "createdAt": "2026-07-26T11:10:36.309Z",
+          "source": "order",
+          "orderId": "GHS-20260726-0F1D"
+        },
+        {
+          "id": "69cc68a0-8bcb-420a-b5c1-b6e0f2f24bbb",
+          "role": "user",
+          "text": "admin",
+          "createdAt": "2026-07-26T11:15:56.646Z"
+        },
+        {
+          "id": "0e8b1803-7273-4612-930e-66d39d379378",
+          "role": "assistant",
+          "text": "Mình đã chuyển yêu cầu sang nhân viên. Bạn cứ để lại nội dung cần hỗ trợ tại đây, nhân viên sẽ trả lời trực tiếp trong cửa sổ chat này.",
+          "createdAt": "2026-07-26T11:15:56.650Z",
+          "source": "handoff"
+        },
+        {
+          "id": "ed41cd70-70a9-4e82-a725-4ad6f2a4a859",
+          "role": "admin",
+          "text": "alo",
+          "createdAt": "2026-07-26T11:41:12.079Z",
+          "adminName": "Nhân viên GHS"
+        },
+        {
+          "id": "5f0e6ead-c4b5-46ac-8a80-ec087c508b63",
+          "role": "assistant",
+          "text": "Cuộc trò chuyện đã được chuyển lại cho trợ lý AI. Bạn vẫn có thể gõ “admin” khi cần gặp nhân viên.",
+          "createdAt": "2026-07-26T11:45:02.853Z",
+          "source": "handoff"
+        },
+        {
+          "id": "b270a84a-d1c6-431e-bea0-c870b669b656",
+          "role": "user",
+          "text": "admin",
+          "createdAt": "2026-07-26T11:45:08.333Z"
+        },
+        {
+          "id": "dd8a1689-62bb-48e8-9c49-bc59d603f295",
+          "role": "assistant",
+          "text": "Mình đã chuyển yêu cầu sang nhân viên. Bạn cứ để lại nội dung cần hỗ trợ tại đây, nhân viên sẽ trả lời trực tiếp trong cửa sổ chat này.",
+          "createdAt": "2026-07-26T11:45:08.337Z",
+          "source": "handoff"
+        },
+        {
+          "id": "6976e5f5-dc7f-411c-9b0f-65f3ca651157",
+          "role": "admin",
+          "text": "Nhân viên GHS đã tham gia cuộc trò chuyện.",
+          "createdAt": "2026-07-26T11:45:13.239Z",
+          "systemNotice": true
+        },
+        {
+          "id": "33433613-78d7-45ce-875f-3eb024cd0a43",
+          "role": "assistant",
+          "text": "Cuộc trò chuyện đã được chuyển lại cho trợ lý AI. Bạn vẫn có thể gõ “admin” khi cần gặp nhân viên.",
+          "createdAt": "2026-07-26T11:45:13.679Z",
+          "source": "handoff"
+        },
+        {
+          "id": "b56483c3-1e3c-46a3-a79e-3550082c4f76",
+          "role": "user",
+          "text": "vợt cầu lông",
+          "createdAt": "2026-07-26T11:45:20.055Z"
+        },
+        {
+          "id": "cbb73024-1dc9-41ad-b8dc-9732e2bcaf89",
+          "role": "assistant",
+          "text": "Dạ, chúng tôi có 5 mẫu vợt cầu lông Mizuno phù hợp:\n\n1. **Vợt Cầu Lông Mizuno Carbo Pro 839** - Lựa chọn tốt cho người mới chơi, dễ làm quen và kiểm soát ổn định\n2. **Vợt Cầu Lông Mizuno Razorblade 509** - Thiên hướng tấn công, phù hợp cho người chơi phong trào đến trung cấp\n3. **Vợt Cầu Lông Mizuno Carbo Pro 837** - Tập trung vào linh hoạt và kiểm soát\n4. **Vợt Cầu Lông Mizuno JPX 3.3** - Dễ sử dụng, hỗ trợ tốt cho người chơi phong trào\n5. **Vợt Cầu Lông Mizuno Duralite 69** - Thiết kế bền bỉ, nâng cao trải nghiệm thi đấu\n\nTất cả đều còn hàng. Bạn muốn tìm hiểu thêm về mẫu nào hoặc có tiêu chí cụ thể như mức giá, mục đích sử dụng không ạ?",
+          "createdAt": "2026-07-26T11:45:31.662Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074346275",
+            "1074346288",
+            "1074346273",
+            "1074346281",
+            "1074346276"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "recommend"
+          }
+        },
+        {
+          "id": "95c41c03-a3f0-43d0-937f-0cd1885ba521",
+          "role": "admin",
+          "text": "Nhân viên GHS đã tham gia cuộc trò chuyện.",
+          "createdAt": "2026-07-26T14:00:47.338Z",
+          "systemNotice": true
+        },
+        {
+          "id": "1c93a4a8-0802-4eed-af50-0b8d80851d5d",
+          "role": "assistant",
+          "text": "Cuộc trò chuyện đã được chuyển lại cho trợ lý AI. Bạn vẫn có thể gõ “admin” khi cần gặp nhân viên.",
+          "createdAt": "2026-07-26T14:01:15.825Z",
+          "source": "handoff"
+        },
+        {
+          "id": "26c6c5cf-518a-4b34-9997-aee41859f2b0",
+          "role": "user",
+          "text": "Bạn là AI hay nhân viên",
+          "createdAt": "2026-07-26T14:01:28.552Z"
+        },
+        {
+          "id": "c9fd281f-f4ff-4ce2-9d05-f193ae5472c7",
+          "role": "assistant",
+          "text": "Dạ, tôi là trợ lý AI của Green Holding Sport. Tôi được lập trình để giúp bạn tìm kiếm sản phẩm thể thao phù hợp. Nếu bạn cần hỗ trợ từ nhân viên, vui lòng gõ 'admin'.",
+          "createdAt": "2026-07-26T14:01:36.605Z",
+          "source": "ai-router+no-database+ai-final",
+          "productIds": [],
+          "route": {
+            "intent": "general_question",
+            "needDatabase": false,
+            "needFinalAi": true,
+            "responseMode": "brief"
+          }
+        },
+        {
+          "id": "647d0b7f-8b57-4ffd-a186-d76d391fd77b",
+          "role": "user",
+          "text": "viết cho tôi đoạn code hello word pyhton",
+          "createdAt": "2026-07-26T14:01:51.033Z"
+        },
+        {
+          "id": "8875c165-f469-42a8-b9be-4b28768d58fd",
+          "role": "assistant",
+          "text": "Xin lỗi, tôi là trợ lý AI của Green Holding Sport chuyên hỗ trợ tìm kiếm sản phẩm thể thao. Câu hỏi về lập trình không nằm trong khả năng của tôi. Nếu bạn cần giúp đỡ từ nhân viên, vui lòng gõ 'admin'. Bạn có thể gõ “admin” để gặp nhân viên.",
+          "createdAt": "2026-07-26T14:01:57.803Z",
+          "source": "ai-router+no-database+ai-final",
+          "productIds": [],
+          "route": {
+            "intent": "general_question",
+            "needDatabase": false,
+            "needFinalAi": true,
+            "responseMode": "brief"
+          }
+        },
+        {
+          "id": "ea1133c5-7806-47b0-b7a9-d78003bf5a34",
+          "role": "user",
+          "text": "giày thể thao cho nữ, giá 1tr5",
+          "createdAt": "2026-07-26T14:02:18.749Z"
+        },
+        {
+          "id": "0671ba67-26d6-46df-b683-ef214952e558",
+          "role": "assistant",
+          "text": "Dạ, tôi tìm thấy giày thể thao nữ phù hợp với ngân sách của bạn. Giày Chạy Bộ Nữ Mizuno Spark 9 có giá 1,420,000 đ, còn hàng với nhiều size lựa chọn. Sản phẩm này rất phù hợp cho chạy bộ, tập gym hoặc đi bộ hàng ngày.",
+          "createdAt": "2026-07-26T14:02:26.138Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320602"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "brief"
+          }
+        },
+        {
+          "id": "e08fbf41-8e43-4a19-a7be-6ca24fd941ee",
+          "role": "user",
+          "text": "Gợi ý giày chạy bộ đang giảm giá",
+          "createdAt": "2026-07-26T14:02:35.843Z"
+        },
+        {
+          "id": "16c025e3-58d6-4770-b494-41ef100d011b",
+          "role": "assistant",
+          "text": "Dạ, tôi tìm thấy giày chạy bộ đang giảm giá phù hợp với bạn. Giày Chạy Bộ Mizuno Esperanza giảm từ 1,802,000 đ còn 1,335,000 đ, rất tiết kiệm. Ngoài ra còn có Giày Chạy Bộ Nữ Mizuno Spark 9 giảm từ 1,578,000 đ còn 1,420,000 đ, và Giày Chạy Bộ Mizuno Wave Inspire 21 giảm từ 3,309,000 đ còn 2,450,000 đ - đều còn hàng. Bạn muốn xem thêm chi tiết hoặc chọn sản phẩm nào?",
+          "createdAt": "2026-07-26T14:02:45.128Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320568",
+            "1074320602",
+            "1074320580"
+          ],
+          "route": {
+            "intent": "product_recommendation",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "recommend"
+          }
+        }
+      ]
+    },
+    "abecd644-8626-43de-a90d-e018be888e18": {
+      "id": "abecd644-8626-43de-a90d-e018be888e18",
+      "status": "bot",
+      "assignedTo": null,
+      "createdAt": "2026-07-26T14:12:38.540Z",
+      "updatedAt": "2026-07-26T14:12:38.540Z",
+      "messages": []
+    },
+    "92c088a4-1af2-4e9c-aae4-44ade5df3796": {
+      "id": "92c088a4-1af2-4e9c-aae4-44ade5df3796",
+      "status": "bot",
+      "assignedTo": null,
+      "createdAt": "2026-07-26T14:14:17.510Z",
+      "updatedAt": "2026-07-27T02:56:27.348Z",
+      "messages": [
+        {
+          "id": "51260ff0-65c4-433a-bbdd-c7d417c7b919",
+          "role": "user",
+          "text": "admin",
+          "createdAt": "2026-07-26T15:44:40.802Z"
+        },
+        {
+          "id": "644ecdab-1f2f-4af0-8e79-a04f98561c73",
+          "role": "assistant",
+          "text": "Mình đã chuyển yêu cầu sang nhân viên. Bạn cứ để lại nội dung cần hỗ trợ tại đây, nhân viên sẽ trả lời trực tiếp trong cửa sổ chat này.",
+          "createdAt": "2026-07-26T15:44:40.805Z",
+          "source": "handoff"
+        },
+        {
+          "id": "1e26460e-d740-4196-bbd2-52b7468526ef",
+          "role": "user",
+          "text": "Cho tôi xem sản phẩm đang khuyến mãi",
+          "createdAt": "2026-07-26T15:44:42.599Z"
+        },
+        {
+          "id": "7843c37d-3fc7-4c5c-9dd9-b5f9792ea7a6",
+          "role": "user",
+          "text": "Gợi ý giày chạy bộ đang giảm giá",
+          "createdAt": "2026-07-26T15:44:45.374Z"
+        },
+        {
+          "id": "99557d3f-cc5e-4e4a-b9f0-ef9549d0d866",
+          "role": "user",
+          "text": "Tìm giày bóng chuyền đang còn hàng",
+          "createdAt": "2026-07-26T15:44:55.025Z"
+        },
+        {
+          "id": "b04ad3e5-4733-4519-90a0-d19754953b39",
+          "role": "admin",
+          "text": "Nhân viên GHS đã tham gia cuộc trò chuyện.",
+          "createdAt": "2026-07-26T15:45:08.004Z",
+          "systemNotice": true
+        },
+        {
+          "id": "ca9c1e66-7ee4-4743-8770-73c9880fe7fd",
+          "role": "assistant",
+          "text": "Cuộc trò chuyện đã được chuyển lại cho trợ lý AI. Bạn vẫn có thể gõ “admin” khi cần gặp nhân viên.",
+          "createdAt": "2026-07-26T15:45:08.480Z",
+          "source": "handoff"
+        },
+        {
+          "id": "90e062e8-b096-460a-a880-7517f524e85b",
+          "role": "user",
+          "text": "Tìm giày bóng chuyền đang còn hàng",
+          "createdAt": "2026-07-26T17:31:12.069Z"
+        },
+        {
+          "id": "1f6e3f0b-369f-46e2-b637-067361dd3f73",
+          "role": "assistant",
+          "text": "Mình đã tìm thấy 5 sản phẩm gần với yêu cầu. Màu, size và trạng thái Còn hàng/Hết hàng được hiển thị trên từng thẻ.",
+          "createdAt": "2026-07-26T17:31:12.779Z",
+          "source": "local-after-ai-error",
+          "productIds": [
+            "1074320499",
+            "1074445165",
+            "1074320494",
+            "1074320501",
+            "1074320735"
+          ],
+          "route": null
+        },
+        {
+          "id": "c86f1a16-f470-42c4-84ee-71e139040013",
+          "role": "user",
+          "text": "giày đá bóng size uk8",
+          "createdAt": "2026-07-27T02:56:03.131Z"
+        },
+        {
+          "id": "6b850a12-dd47-4b15-849f-15fed1e833b8",
+          "role": "assistant",
+          "text": "Mình tìm thấy 5 mẫu giày đá bóng size UK8 còn hàng. Các mẫu này đều có kích thước bạn cần và sẵn sàng giao ngay. Bạn có thể xem chi tiết giá, màu sắc và đặt hàng trên từng thẻ sản phẩm.",
+          "createdAt": "2026-07-27T02:56:27.348Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320511",
+            "1074320513",
+            "1074320514",
+            "1074320515",
+            "1074320605"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "detail"
+          }
+        }
+      ]
+    },
+    "77b8a7de-c934-4f3f-af98-35ac8efa9578": {
+      "id": "77b8a7de-c934-4f3f-af98-35ac8efa9578",
+      "status": "bot",
+      "assignedTo": null,
+      "createdAt": "2026-07-27T02:48:00.901Z",
+      "updatedAt": "2026-07-27T03:25:55.747Z",
+      "messages": [
+        {
+          "id": "ba8ad298-b158-48a4-9b8b-d49bf49585c5",
+          "role": "user",
+          "text": "Gợi ý giày chạy bộ đang giảm giá",
+          "createdAt": "2026-07-27T02:48:59.893Z"
+        },
+        {
+          "id": "2fdf539c-074a-4821-b1bc-ab87b9645c88",
+          "role": "assistant",
+          "text": "Mình gợi ý 5 đôi giày chạy bộ đang giảm giá cho bạn. Đôi Esperanza của Mizuno là lựa chọn tốt nếu bạn có bàn chân rộng với mức giảm khá tốt. Nếu bạn tìm kiếm giày ổn định và êm ái cho chạy hàng ngày, các dòng Wave Inspire hay Wave Rider cũng đang có giảm giá đáng kể. Tất cả đều còn hàng, bạn có thể xem chi tiết và chọn lựa màu, size phù hợp nhé.",
+          "createdAt": "2026-07-27T02:49:13.776Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320568",
+            "1074320586",
+            "1074320563",
+            "1074320583",
+            "1074320587"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "recommend"
+          }
+        },
+        {
+          "id": "9d1a122f-c305-4b6e-a3f6-6ec8bf6535d0",
+          "role": "user",
+          "text": "có còn wave fang pro không",
+          "createdAt": "2026-07-27T03:15:32.353Z"
+        },
+        {
+          "id": "38be3306-59a9-49b2-b126-89dcd3582617",
+          "role": "assistant",
+          "text": "Mình đã tìm thấy 5 sản phẩm gần với nhu cầu của bạn. Bạn xem ảnh, giá, màu, size và mở trang chi tiết ngay trên các thẻ bên dưới nhé.",
+          "createdAt": "2026-07-27T03:16:23.155Z",
+          "source": "database-after-ai-error",
+          "productIds": [
+            "1074320580",
+            "1074320587",
+            "1074342918",
+            "1074328177",
+            "1074438273"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "brief"
+          }
+        },
+        {
+          "id": "9e8c28ce-a7e3-4633-bac4-30d6ba14de23",
+          "role": "user",
+          "text": "wave fang pro cơ mà",
+          "createdAt": "2026-07-27T03:25:47.636Z"
+        },
+        {
+          "id": "88441bcf-2381-48ac-b185-fefa9a0dfbbe",
+          "role": "assistant",
+          "text": "Có chứ! Mình tìm thấy Giày Cầu Lông Mizuno Wave Fang Pro Chính Hãng cho bạn. Đôi giày này rất tốt cho di chuyển nhanh và ổn định trên sân cầu lông, với thiết kế bám sân tốt và hỗ trợ tối đa trong thi đấu. Còn hàng với nhiều size để bạn chọn lựa. Xem chi tiết và chọn màu, size phù hợp nhé.",
+          "createdAt": "2026-07-27T03:25:55.747Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320552"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "detail"
+          }
+        }
+      ]
+    },
+    "d468324b-2bf5-4132-94b0-1002eac7d590": {
+      "id": "d468324b-2bf5-4132-94b0-1002eac7d590",
+      "status": "bot",
+      "assignedTo": null,
+      "createdAt": "2026-07-27T02:57:15.472Z",
+      "updatedAt": "2026-07-27T02:59:05.774Z",
+      "messages": [
+        {
+          "id": "9ad5162c-aee9-48aa-b7a7-ba86a2d7bee0",
+          "role": "user",
+          "text": "Giày đá bóng size UK5 giá 2tr",
+          "createdAt": "2026-07-27T02:57:34.035Z"
+        },
+        {
+          "id": "17081a05-2a83-45eb-998d-7a486e15d0dd",
+          "role": "assistant",
+          "text": "Xin lỗi, kết quả tìm kiếm giày đá bóng size UK5 trong khoảng giá bạn nêu chưa có. Cửa hàng hiện có các sản phẩm thể thao khác từ Mizuno như vợt cầu lông và cước vợt. Bạn có thể tìm theo tên cụ thể, mã sản phẩm hoặc thử mở rộng mức giá không? Nếu cần hỗ trợ thêm, bạn có thể gõ 'admin' để được tư vấn trực tiếp.",
+          "createdAt": "2026-07-27T02:57:46.022Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074346264",
+            "1074346288",
+            "1074346273",
+            "1074346276",
+            "1074346277"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "detail"
+          }
+        },
+        {
+          "id": "fc6c34ef-ba06-4b2f-a129-f41e2e8081bb",
+          "role": "user",
+          "text": "Liên quan đến bóng đá",
+          "createdAt": "2026-07-27T02:58:09.049Z"
+        },
+        {
+          "id": "bfec9f9c-c3f6-460c-8a7e-675e28e0835b",
+          "role": "assistant",
+          "text": "Tuyệt vời! Cửa hàng có 5 mẫu giày đá bóng Mizuno cho bạn chọn. Từ mẫu nhập môn Monarcida Neo III Select giá 1,49 triệu đến các dòng cao cấp như Morelia II Japan và Alpha III Japan từ 4 triệu trở lên. Bạn muốn xem chi tiết mẫu nào hoặc cần tư vấn thêm về size và đặc tính?",
+          "createdAt": "2026-07-27T02:58:21.955Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320513",
+            "1074320515",
+            "1074320516",
+            "1074320514",
+            "1074320511"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "clarify"
+          }
+        },
+        {
+          "id": "fe6bd154-a63e-4347-9efc-3aeffdb55ffd",
+          "role": "user",
+          "text": "Chân bè muốn đá bóng sân 7 mua gì được",
+          "createdAt": "2026-07-27T02:58:52.618Z"
+        },
+        {
+          "id": "2145dca9-2c22-4b20-9f25-531652963540",
+          "role": "assistant",
+          "text": "Được lắm! Cửa hàng có 5 mẫu giày đá bóng Mizuno phù hợp cho sân 7 người. Từ Monarcida Neo III Select giá 1,49 triệu cho người mới tập, đến các dòng cao cấp như Morelia Sala Elite TF chuyên dùng sân nhân tạo 5-7 người, hay Morelia II Japan và Alpha III Japan từ 4 triệu trở lên cho những ai muốn chất lượng tốt nhất. Bạn muốn xem chi tiết mẫu nào hoặc cần tư vấn thêm về size?",
+          "createdAt": "2026-07-27T02:59:05.774Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320513",
+            "1074320515",
+            "1074320516",
+            "1074320514",
+            "1074320511"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "recommend"
+          }
+        }
+      ]
+    },
+    "ef5995cc-12c1-43cf-b109-cd687ddd5773": {
+      "id": "ef5995cc-12c1-43cf-b109-cd687ddd5773",
+      "status": "bot",
+      "assignedTo": null,
+      "createdAt": "2026-07-27T03:14:22.523Z",
+      "updatedAt": "2026-07-27T03:15:07.172Z",
+      "messages": [
+        {
+          "id": "a9c9c0f8-aebe-47e8-a537-bf782ea676d1",
+          "role": "user",
+          "text": "TÔI CẦN BIẾT KHO CÒN GIÀY WAVE FANG PRO KHÔNG",
+          "createdAt": "2026-07-27T03:14:40.003Z"
+        },
+        {
+          "id": "8db79d62-d162-4c8d-a5bd-3a6c28092b92",
+          "role": "assistant",
+          "text": "Dạ, Giày Cầu Lông Mizuno Wave Fang Pro Chính Hãng của chúng tôi hiện còn hàng. Giày có đầy đủ các size từ 3.5 đến 10.0, giúp bạn di chuyển nhanh và ổn định trên sân. Bạn chọn size nào để xem chi tiết và giá nhé.",
+          "createdAt": "2026-07-27T03:15:07.172Z",
+          "source": "ai-router+database-code+ai-final",
+          "productIds": [
+            "1074320552"
+          ],
+          "route": {
+            "intent": "search_product",
+            "needDatabase": true,
+            "needFinalAi": true,
+            "responseMode": "detail"
+          }
+        }
+      ]
+    }
+  },
+  "orders": [
+    {
+      "id": "GHS-20260726-0F1D",
+      "sessionId": "75dfa0dc-c041-4dd9-915a-7a5e5500bf3e",
+      "customer": {
+        "name": "Vương Ngọc Hải",
+        "phone": "0961286582",
+        "address": "Phú Thọ, Phú Sơn\nSố 76",
+        "note": "test"
+      },
+      "items": [
+        {
+          "productId": "1074320540",
+          "variantId": "1168706365",
+          "sku": "SP003149",
+          "name": "Giày Cầu Lông Mizuno Wave Claw Pro 2 Chính Hãng",
+          "color": "Đỏ",
+          "size": "4.5",
+          "image": "https://cdn.hstatic.net/products/200001057521/gi_y_c_u_l_ng_mizuno_wave_claw_pro_2_ch_nh_h_ng_55b2f0c14c2244c6a5e824430557eff1.jpg",
+          "price": 3510000,
+          "quantity": 1,
+          "lineTotal": 3510000,
+          "url": "https://www.greenholdingsport.vn/products/giay-cau-long-mizuno-wave-claw-pro-2-chinh-hang"
+        },
+        {
+          "productId": "1074320532",
+          "variantId": "1168706317",
+          "sku": "71GA247316-9.5",
+          "name": "Giày Cầu Lông Mizuno Wave Claw Neo 3",
+          "color": "Trắng-Xanh",
+          "size": "9.5",
+          "image": "https://cdn.hstatic.net/products/200001057521/img_2_aeda67ae9b9a485a917167f09824c5e1.jpg",
+          "price": 2700000,
+          "quantity": 1,
+          "lineTotal": 2700000,
+          "url": "https://www.greenholdingsport.vn/products/giay-cau-long-mizuno-wave-claw-neo-3"
+        }
+      ],
+      "total": 6210000,
+      "status": "confirmed",
+      "createdAt": "2026-07-26T11:10:36.307Z",
+      "updatedAt": "2026-07-26T11:24:21.928Z"
+    }
+  ]
+}
