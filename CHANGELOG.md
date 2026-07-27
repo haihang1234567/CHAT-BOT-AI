@@ -1,0 +1,13 @@
+# Changelog
+
+## 1.3.0 – AI hai tầng
+
+- Thêm AI Router gọi lần 1 để nhận dạng ý định và xuất bộ lọc JSON.
+- Backend tự kiểm tra JSON và truy vấn CSV/database bằng code; AI không viết SQL.
+- Thêm AI lần 2 để nhận dữ liệu đã lọc và tạo câu trả lời cuối.
+- Hỗ trợ dùng một model chung hoặc hai model riêng cho Router và Chat.
+- Thêm truy vấn có cấu trúc theo mã, tên, thương hiệu, loại, màu, size, khoảng giá và tồn kho.
+- Thêm cache riêng cho Router và câu trả lời cuối.
+- Nút Test API kiểm tra cả hai lượt gọi.
+- Giữ nguyên trang khách, admin trực tiếp, giỏ hàng và đơn nháp local.
+- Có fallback local khi AI chưa cấu hình hoặc API lỗi.
