@@ -31,6 +31,22 @@ function cleanPrice(value) {
   return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
 }
 
+function cleanNeedGroups(value, maxItems = 8, maxTerms = 8) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((group) => ({
+      label: cleanString(group?.label, 120),
+      terms: cleanList(group?.terms, maxTerms, 100),
+      scope: group?.scope === 'identity' ? 'identity' : 'details'
+    }))
+    .filter((group) => group.terms.length)
+    .slice(0, maxItems);
+}
+
+function uniqueStrings(values) {
+  return [...new Set((values || []).map((value) => cleanString(value, 160)).filter(Boolean))];
+}
+
 class AiService {
   constructor(config, productService) {
     this.config = config;
@@ -191,11 +207,18 @@ class AiService {
       'Backend sẽ đọc các bộ lọc JSON và tự truy vấn CSV/database an toàn.',
       'Giá phải đổi thành số VND nguyên, ví dụ 2 triệu = 2000000.',
       'Khi khách nói “mẫu này”, “mẫu trên”, dùng productIds trong HISTORY nếu có.',
+      'Luôn phân tích đủ: bộ môn, môi trường/mặt sân, trình độ, đặc điểm cơ thể hoặc form chân, ngân sách, size, màu và mục đích sử dụng.',
+      'requirements là điều kiện bắt buộc. Mỗi object là một nhóm OR: sản phẩm chỉ cần khớp một terms trong nhóm.',
+      'preferences là điều kiện ưu tiên để xếp hạng, không bắt buộc. excludeTerms là từ nhận diện sản phẩm phải loại bỏ.',
+      'Ví dụ sân bóng 5/7 hoặc cỏ nhân tạo: requirements có nhóm TF/AS/cỏ nhân tạo/đinh dăm và excludeTerms có FG, SG.',
+      'Ví dụ sân 11 cỏ tự nhiên: requirements có nhóm FG/SG/cỏ tự nhiên và loại TF/AS/IC.',
+      'Ví dụ chạy địa hình phải ưu tiên hoặc yêu cầu trail/địa hình; không trộn giày chạy đường bằng nếu khách nói rõ địa hình.',
+      'Nếu yêu cầu còn mơ hồ và có thể dẫn tới chọn sai loại sản phẩm, đặt responseMode=clarify và viết clarificationQuestion.',
       'needDatabase=true khi cần sản phẩm, mã, giá, màu, size, tồn kho, ảnh, link, mô tả, tư vấn, so sánh hoặc đặt hàng.',
       'needFinalAi=true để AI thứ hai soạn câu trả lời. Chỉ false cho tác vụ hệ thống không cần lời đáp AI.',
       'Không thêm trường ngoài schema.',
       'Trả đúng một JSON, không markdown:',
-      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needFinalAi":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
+      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needFinalAi":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
     ].join('\n');
   }
 
@@ -283,6 +306,159 @@ class AiService {
     return { minPrice, maxPrice };
   }
 
+  codeSearchRules(message) {
+    const q = normalizeText(message);
+    const categoryRules = [
+      ['giay bong chuyen', /\b(giay bong chuyen|bong chuyen)\b/],
+      ['bong da', /\b(giay bong da|giay da bong|bong da|san co nhan tao|futsal)\b/],
+      ['da bong', /\b(giay bong da|giay da bong|bong da|san co nhan tao|futsal)\b/],
+      ['giay chay bo', /\b(giay chay bo|giay chay|chay bo|chay dia hinh|running|trail running)\b/],
+      ['giay cau long', /\b(giay cau long)\b/],
+      ['vot cau long', /\b(vot cau long)\b/],
+      ['vot pickleball', /\b(vot pickleball|pickleball)\b/],
+      ['giay tennis', /\b(giay tennis|tennis)\b/],
+      ['giay bong ro', /\b(giay bong ro|bong ro)\b/],
+      ['ao', /\b(ao|polo|tee|tank top|jacket)\b/],
+      ['quan', /\b(quan|short)\b/],
+      ['balo', /\b(balo|ba lo)\b/],
+      ['bong', /\b(bong thi dau|qua bong)\b/]
+    ];
+    const categories = categoryRules
+      .filter(([, pattern]) => pattern.test(q))
+      .map(([name]) => name)
+      .slice(0, 8);
+    const brands = ['mizuno', 'jogarbola', 'promax', 'mitre', 'joma', 'zocker']
+      .filter((brand) => new RegExp(`(?:^|\\s)${brand}(?:$|\\s)`).test(q));
+    const colorDictionary = [
+      'trang', 'den', 'do', 'xanh', 'vang', 'hong', 'tim', 'cam', 'xam',
+      'nau', 'xanh duong', 'xanh la', 'xanh navy', 'trang xanh', 'den trang'
+    ];
+    const colorContext = q.match(/\b(?:mau|color)\b([\s\S]{0,80})/);
+    const colorText = colorContext ? colorContext[1] : '';
+    const colors = colorDictionary.filter((color) => {
+      if (!colorText) return false;
+      const escaped = color.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(colorText);
+    });
+    if (colorText && /(?:^|\s)(?:be|beige)(?:$|\s)/.test(colorText)) colors.push('be');
+
+    const sizes = [];
+    for (const match of String(message || '').matchAll(/(?:size|sz|kích thước|kich thuoc)\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/gi)) {
+      sizes.push(match[1].replace(',', '.'));
+    }
+
+    const requirements = [];
+    const preferences = [];
+    const excludeTerms = [];
+    const customerNeeds = [];
+    const isFootball = categories.includes('bong da') || categories.includes('da bong');
+    const artificialFootball = isFootball
+      && /\b(san (?:5|7)|san co nhan tao|co nhan tao|dinh dam|turf)\b/.test(q);
+    const naturalFootball = isFootball
+      && /\b(san 11|san co tu nhien|co tu nhien|firm ground)\b/.test(q);
+    const indoorFootball = isFootball
+      && /\b(futsal|san trong nha|indoor)\b/.test(q);
+
+    if (artificialFootball) {
+      requirements.push({
+        label: 'Mặt sân bóng đá sân 5/7 hoặc cỏ nhân tạo',
+        terms: ['tf', 'as', 'cỏ nhân tạo', 'đinh dăm', 'turf'],
+        scope: 'identity'
+      });
+      excludeTerms.push('fg', 'sg');
+      customerNeeds.push('Giày bóng đá phù hợp sân 5/7 hoặc cỏ nhân tạo');
+    } else if (naturalFootball) {
+      requirements.push({
+        label: 'Mặt sân bóng đá sân 11 hoặc cỏ tự nhiên',
+        terms: ['fg', 'sg', 'cỏ tự nhiên', 'firm ground'],
+        scope: 'identity'
+      });
+      excludeTerms.push('tf', 'as', 'ic', 'in');
+      customerNeeds.push('Giày bóng đá phù hợp sân 11 hoặc cỏ tự nhiên');
+    } else if (indoorFootball) {
+      requirements.push({
+        label: 'Bóng đá trong nhà hoặc futsal',
+        terms: ['ic', 'in', 'futsal', 'sân trong nhà'],
+        scope: 'identity'
+      });
+      excludeTerms.push('fg', 'sg', 'tf', 'as');
+      customerNeeds.push('Giày bóng đá trong nhà hoặc futsal');
+    }
+
+    if (categories.includes('giay chay bo') && /\b(trail|dia hinh|duong mon|leo nui)\b/.test(q)) {
+      requirements.push({
+        label: 'Chạy địa hình',
+        terms: ['trail', 'địa hình', 'đường mòn', 'mujin', 'daichi'],
+        scope: 'details'
+      });
+      customerNeeds.push('Giày chạy địa hình');
+    }
+
+    if (/\b(chan (?:hoi )?be|be ngang|form rong|wide fit|ban chan rong)\b/.test(q)) {
+      preferences.push({
+        label: 'Phù hợp chân bè hoặc bàn chân rộng',
+        terms: ['wide fit', 'form rộng', 'chân bè', 'bè ngang', '2e', '3e', '4e'],
+        scope: 'details'
+      });
+      customerNeeds.push('Ưu tiên form phù hợp chân bè');
+    }
+
+    const { minPrice, maxPrice } = this.parsePriceFilters(message);
+    if (minPrice !== null) customerNeeds.push(`Giá từ ${minPrice} VND`);
+    if (maxPrice !== null) customerNeeds.push(`Giá không vượt quá ${maxPrice} VND`);
+
+    return {
+      brands,
+      categories,
+      colors: uniqueStrings(colors),
+      sizes: uniqueStrings(sizes),
+      customerNeeds,
+      requirements,
+      preferences,
+      excludeTerms: uniqueStrings(excludeTerms),
+      minPrice,
+      maxPrice,
+      inStockOnly: /\b(con hang|co hang|san pham san co)\b/.test(q)
+    };
+  }
+
+  mergeCodeRules(route, message) {
+    const rules = this.codeSearchRules(message);
+    const search = route.search || {};
+    const knownSurface = rules.requirements.some((group) => group.scope === 'identity');
+    const surfaceTerms = new Set([
+      'tf', 'as', 'fg', 'sg', 'ag', 'ic', 'in', 'turf',
+      'co nhan tao', 'co tu nhien', 'dinh dam', 'firm ground', 'futsal', 'san trong nha'
+    ]);
+    const aiRequirements = (search.requirements || []).filter((group) => {
+      if (!knownSurface) return true;
+      return !(group.terms || []).some((term) => surfaceTerms.has(normalizeText(term)));
+    });
+    const aiExcludeTerms = (search.excludeTerms || []).filter((term) => {
+      return !knownSurface || !surfaceTerms.has(normalizeText(term));
+    });
+    const beigeExplicit = /\b(?:mau|color)\s+(?:be|beige)\b|\bbeige\b/.test(normalizeText(message));
+    const aiColors = (search.colors || []).filter((color) => normalizeText(color) !== 'be' || beigeExplicit);
+
+    return {
+      ...route,
+      search: {
+        ...search,
+        brands: uniqueStrings([...(rules.brands || []), ...(search.brands || [])]),
+        categories: uniqueStrings([...(rules.categories || []), ...(search.categories || [])]),
+        colors: uniqueStrings([...(rules.colors || []), ...aiColors]),
+        sizes: uniqueStrings([...(rules.sizes || []), ...(search.sizes || [])]),
+        customerNeeds: uniqueStrings([...(rules.customerNeeds || []), ...(search.customerNeeds || [])]),
+        requirements: [...rules.requirements, ...aiRequirements],
+        preferences: [...rules.preferences, ...(search.preferences || [])],
+        excludeTerms: uniqueStrings([...rules.excludeTerms, ...aiExcludeTerms]),
+        minPrice: rules.minPrice !== null ? rules.minPrice : search.minPrice,
+        maxPrice: rules.maxPrice !== null ? rules.maxPrice : search.maxPrice,
+        inStockOnly: rules.inStockOnly || Boolean(search.inStockOnly)
+      }
+    };
+  }
+
   fallbackRoute(message, history = [], warning = '') {
     const q = normalizeText(message);
     const compactHistory = this.compactHistory(history, {
@@ -293,31 +469,7 @@ class AiService {
     const contextReference = /\b(mau nay|san pham nay|doi nay|cai nay|mau tren|san pham tren|doi tren)\b/.test(q);
     const codeTokens = String(message || '').match(/\b[A-Za-z0-9][A-Za-z0-9._/-]{4,}\b/g) || [];
     const codes = [...new Set(codeTokens.filter((token) => /[A-Za-z]/.test(token) && /\d/.test(token)))].slice(0, 10);
-    const brands = ['mizuno', 'jogarbola', 'promax', 'mitre', 'joma', 'zocker']
-      .filter((brand) => q.includes(brand));
-    const colorDictionary = [
-      'trang', 'den', 'do', 'xanh', 'vang', 'hong', 'tim', 'cam', 'xam',
-      'nau', 'be', 'xanh duong', 'xanh la', 'xanh navy', 'trang xanh', 'den trang'
-    ];
-    const colors = colorDictionary.filter((color) => q.includes(color)).slice(0, 8);
-    const categoryRules = [
-      ['giay bong chuyen', /\b(giay bong chuyen|bong chuyen)\b/],
-      ['giay bong da', /\b(giay bong da|san co nhan tao|futsal|san trong nha)\b/],
-      ['giay chay bo', /\b(giay chay bo|chay bo|running)\b/],
-      ['giay cau long', /\b(giay cau long)\b/],
-      ['vot cau long', /\b(vot cau long|cau long)\b/],
-      ['vot pickleball', /\b(vot pickleball|pickleball)\b/],
-      ['ao', /\b(ao|polo|tee|tank top|jacket)\b/],
-      ['quan', /\b(quan|short)\b/],
-      ['balo', /\b(balo|ba lo)\b/],
-      ['bong', /\b(bong thi dau|qua bong)\b/]
-    ];
-    const categories = categoryRules.filter(([, pattern]) => pattern.test(q)).map(([name]) => name).slice(0, 8);
-    const sizes = [];
-    for (const match of String(message || '').matchAll(/(?:size|sz|kich thuoc)\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/gi)) {
-      sizes.push(match[1].replace(',', '.'));
-    }
-    const { minPrice, maxPrice } = this.parsePriceFilters(message);
+    const codeRules = this.codeSearchRules(message);
 
     let intent = 'search_product';
     let responseMode = 'brief';
@@ -366,13 +518,17 @@ class AiService {
         codes,
         productIds: contextReference ? historyIds : [],
         names: [],
-        brands,
-        categories,
-        colors,
-        sizes: [...new Set(sizes)].slice(0, 10),
-        minPrice,
-        maxPrice,
-        inStockOnly: /\b(con hang|co hang|san pham san co)\b/.test(q),
+        brands: codeRules.brands,
+        categories: codeRules.categories,
+        colors: codeRules.colors,
+        sizes: codeRules.sizes,
+        customerNeeds: codeRules.customerNeeds,
+        requirements: codeRules.requirements,
+        preferences: codeRules.preferences,
+        excludeTerms: codeRules.excludeTerms,
+        minPrice: codeRules.minPrice,
+        maxPrice: codeRules.maxPrice,
+        inStockOnly: codeRules.inStockOnly,
         limit: this.config.maxCandidates || 5
       }
     };
@@ -434,6 +590,10 @@ class AiService {
         categories: cleanList(search.categories, 8, 100),
         colors: cleanList(search.colors, 8, 80),
         sizes: cleanList(search.sizes, 10, 40),
+        customerNeeds: cleanList(search.customerNeeds, 12, 160),
+        requirements: cleanNeedGroups(search.requirements, 8, 8),
+        preferences: cleanNeedGroups(search.preferences, 8, 8),
+        excludeTerms: cleanList(search.excludeTerms, 16, 100),
         minPrice: cleanPrice(search.minPrice),
         maxPrice: cleanPrice(search.maxPrice),
         inStockOnly: Boolean(search.inStockOnly),
@@ -479,7 +639,10 @@ class AiService {
       console.warn(warning);
       result = this.fallbackRoute(message, history, warning);
     } else {
-      result = { ...this.normalizeRoute(parsed, message), _source: 'ai-router' };
+      result = {
+        ...this.mergeCodeRules(this.normalizeRoute(parsed, message), message),
+        _source: 'ai-router'
+      };
     }
     this.writeCache(key, result);
     return result;
@@ -489,7 +652,11 @@ class AiService {
     return [
       'Bạn là nhân viên tư vấn Green Holding Sport, trả lời tự nhiên như người thật.',
       'Đây là AI lần 2. AI lần 1 đã phân tích ý định; backend đã truy vấn database bằng code.',
+      'Trước khi tư vấn, đối chiếu lại toàn bộ customerNeeds, requirements, preferences, excludeTerms và ngân sách trong ROUTE.',
       'Chỉ dùng dữ liệu trong DATABASE_RESULTS. Không bịa giá, giá gốc, khuyến mãi, tồn kho, màu, size, mã, ảnh, link, công nghệ hay chính sách.',
+      'Không gọi một sản phẩm là phù hợp nếu tên, loại, mô tả hoặc biến thể mâu thuẫn với điều kiện bắt buộc của khách.',
+      'Nếu không có sản phẩm đáp ứng đủ điều kiện bắt buộc, nói rõ chưa tìm thấy; productIds phải là mảng rỗng. Không chọn sản phẩm gần đúng chỉ để đủ số lượng.',
+      'Nếu dữ liệu chưa đủ để xác minh một ưu tiên như form chân, độ êm hoặc trình độ sử dụng, nói rõ chưa thể xác nhận thay vì tự suy đoán.',
       'Tồn kho chỉ nói “Còn hàng” hoặc “Hết hàng”, không nói số lượng.',
       'Ảnh, giá, biến thể và nút xem chi tiết được giao diện dựng từ database; câu trả lời không cần chép lại toàn bộ dữ liệu.',
       'Nếu không có kết quả, nói rõ chưa tìm thấy và hỏi khách bổ sung tên/mã/size/màu/mức giá; có thể gợi ý gõ “admin”.',
@@ -561,7 +728,7 @@ class AiService {
         : [];
       result = {
         reply: cleanString(parsed.reply, 3500),
-        productIds: productIds.length
+        productIds: Array.isArray(parsed.productIds)
           ? productIds
           : limitedCandidates.slice(0, 5).map((item) => item.id),
         needsAdmin: Boolean(parsed.needsAdmin),
