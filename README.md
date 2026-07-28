@@ -54,8 +54,8 @@ Xem chi tiết tại `TWO_STAGE_AI.md`.
 2. Nhấp đúp `start-chatbot.cmd`.
 3. Lần đầu hệ thống tự tạo `.env` từ `.env.example`.
 4. Mở:
-   - Khách: `http://localhost:3000`
-   - Nhân viên: `http://localhost:3000/admin.html`
+   - Khách: `http://localhost:3100`
+   - Nhân viên: `http://localhost:3100/admin.html`
 
 Mật khẩu admin mặc định: `change-me`. Hãy đổi trong `.env`.
 
