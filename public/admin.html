@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GHS Chat Admin</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+  <div id="adminLogin" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <div class="brand-mark large">GHS</div>
+      <h1>Trang nhân viên</h1>
+      <p>Đăng nhập để nhận chat trực tiếp và xem đơn nháp.</p>
+      <label>Mật khẩu admin<input id="adminPassword" type="password" class="field-control" autocomplete="current-password" required></label>
+      <label>Tên hiển thị<input id="adminName" type="text" class="field-control" value="Nhân viên GHS" maxlength="80" required></label>
+      <p id="loginError" class="form-error"></p>
+      <button class="primary-button full-width" type="submit">Đăng nhập</button>
+    </form>
+  </div>
+
+  <div id="adminApp" class="admin-shell" hidden>
+    <header class="admin-topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark">GHS</div>
+        <div><h1>Điều phối tư vấn</h1><p id="systemStatus">Đang kiểm tra hệ thống...</p></div>
+      </div>
+      <div class="admin-actions">
+        <button id="testAiButton" class="secondary-button" type="button">Test API AI</button>
+        <button id="logoutButton" class="ghost-button" type="button">Đăng xuất</button>
+      </div>
+    </header>
+
+    <nav class="admin-tabs" aria-label="Chức năng">
+      <button class="active" data-tab="chats" type="button">Tin nhắn <span id="waitingBadge" class="badge">0</span></button>
+      <button data-tab="orders" type="button">Đơn nháp <span id="orderBadge" class="badge">0</span></button>
+    </nav>
+
+    <main>
+      <section id="chatsTab" class="admin-chat-layout tab-panel">
+        <aside class="session-sidebar">
+          <div class="sidebar-title"><h2>Cuộc trò chuyện</h2><button id="refreshSessions" class="icon-button" type="button" title="Làm mới">↻</button></div>
+          <div class="session-filters">
+            <button class="active" data-filter="all" type="button">Tất cả</button>
+            <button data-filter="waiting_admin" type="button">Đang chờ</button>
+            <button data-filter="human" type="button">Đang hỗ trợ</button>
+          </div>
+          <div id="sessionList" class="session-list"></div>
+        </aside>
+
+        <section class="admin-conversation">
+          <div id="emptyConversation" class="empty-state">
+            <div class="empty-icon">💬</div>
+            <h2>Chọn một cuộc trò chuyện</h2>
+            <p>Các phiên có trạng thái “Đang chờ” cần được ưu tiên hỗ trợ.</p>
+          </div>
+
+          <div id="conversationView" class="conversation-view" hidden>
+            <div class="conversation-header">
+              <div><span class="eyebrow">MÃ PHIÊN</span><h2 id="activeSessionId"></h2><p id="activeSessionStatus"></p></div>
+              <div class="conversation-actions">
+                <button id="claimButton" class="primary-button" type="button">Nhận hỗ trợ</button>
+                <button id="releaseButton" class="secondary-button" type="button">Trả lại cho AI</button>
+              </div>
+            </div>
+            <div id="adminMessages" class="chat-messages admin-messages"></div>
+            <form id="adminMessageForm" class="chat-composer admin-composer">
+              <textarea id="adminMessageInput" rows="1" maxlength="3000" placeholder="Nhập tin nhắn trả lời khách..." required></textarea>
+              <button class="primary-button" type="submit">Gửi</button>
+            </form>
+          </div>
+        </section>
+      </section>
+
+      <section id="ordersTab" class="orders-panel tab-panel" hidden>
+        <div class="orders-heading"><div><span class="eyebrow">ĐƠN LOCAL</span><h2>Danh sách đơn nháp</h2></div><button id="refreshOrders" class="secondary-button" type="button">Làm mới</button></div>
+        <div id="ordersList" class="orders-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="adminToast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/js/admin.js" defer></script>
+</body>
+</html>

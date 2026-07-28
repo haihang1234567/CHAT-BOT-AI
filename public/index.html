@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Trợ lý tư vấn sản phẩm Green Holding Sport">
+  <title>GHS Sport Assistant</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="customer-page">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark" aria-hidden="true">GHS</div>
+        <div>
+          <h1>Green Holding Sport</h1>
+          <p><span class="online-dot"></span> Trợ lý tư vấn sản phẩm</p>
+        </div>
+      </div>
+      <button id="cartButton" class="icon-button cart-button" type="button" aria-label="Mở đơn hàng">
+        🛒 <span>Đơn nháp</span><b id="cartCount">0</b>
+      </button>
+    </header>
+
+    <main class="customer-layout">
+      <section class="chat-card" aria-label="Trò chuyện">
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <div class="quick-prompts" aria-label="Gợi ý câu hỏi">
+          <button type="button" data-prompt="Tìm giày bóng chuyền đang còn hàng">Giày bóng chuyền</button>
+          <button type="button" data-prompt="Gợi ý giày chạy bộ đang giảm giá">Giày chạy bộ</button>
+          <button type="button" data-prompt="Cho tôi xem sản phẩm đang khuyến mãi">Đang khuyến mãi</button>
+          <button type="button" data-prompt="admin">Gặp nhân viên</button>
+        </div>
+
+        <form id="chatForm" class="chat-composer">
+          <textarea id="messageInput" rows="1" maxlength="3000" placeholder="Nhập tên, mã sản phẩm, nhu cầu hoặc size..." required></textarea>
+          <button id="sendButton" class="primary-button send-button" type="submit">Gửi</button>
+        </form>
+        <p class="admin-hint">AI chưa hỗ trợ đúng nhu cầu? Hãy gõ <strong>admin</strong> để gặp nhân viên trực tiếp.</p>
+      </section>
+
+      <aside id="cartPanel" class="cart-panel" aria-label="Đơn hàng nháp">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">ĐƠN HÀNG NHÁP</span>
+            <h2>Sản phẩm đã chọn</h2>
+          </div>
+          <button id="closeCartButton" class="icon-button mobile-only" type="button" aria-label="Đóng">✕</button>
+        </div>
+        <div id="cartItems" class="cart-items"></div>
+        <div class="cart-summary">
+          <div><span>Tạm tính</span><strong id="cartTotal">0₫</strong></div>
+          <button id="checkoutButton" class="primary-button full-width" type="button" disabled>Lưu đơn nháp</button>
+          <p>Đơn chỉ được lưu trên máy local. Nhân viên sẽ xác nhận lại trước khi xử lý.</p>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div id="overlay" class="overlay" hidden></div>
+
+  <dialog id="variantDialog" class="modal-card">
+    <form method="dialog" class="modal-inner">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">CHỌN BIẾN THỂ</span>
+          <h2 id="variantProductName">Sản phẩm</h2>
+        </div>
+        <button class="icon-button" value="cancel" aria-label="Đóng">✕</button>
+      </div>
+      <img id="variantImage" class="variant-preview" alt="Ảnh sản phẩm">
+      <label class="field-label" for="variantSelect">Màu và size</label>
+      <select id="variantSelect" class="field-control"></select>
+      <label class="field-label" for="variantQuantity">Số lượng</label>
+      <input id="variantQuantity" class="field-control" type="number" min="1" max="99" value="1">
+      <p id="variantPrice" class="modal-price"></p>
+      <button id="confirmVariantButton" class="primary-button full-width" type="button">Thêm vào đơn</button>
+    </form>
+  </dialog>
+
+  <dialog id="checkoutDialog" class="modal-card checkout-modal">
+    <form id="checkoutForm" class="modal-inner">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">THÔNG TIN NHẬN HÀNG</span>
+          <h2>Lưu đơn hàng nháp</h2>
+        </div>
+        <button id="closeCheckoutButton" class="icon-button" type="button" aria-label="Đóng">✕</button>
+      </div>
+      <div class="form-grid">
+        <label>Họ và tên<input name="name" class="field-control" maxlength="120" required></label>
+        <label>Số điện thoại<input name="phone" class="field-control" maxlength="30" inputmode="tel" required></label>
+        <label class="full-span">Địa chỉ<textarea name="address" class="field-control" rows="3" maxlength="300" required></textarea></label>
+        <label class="full-span">Ghi chú<textarea name="note" class="field-control" rows="2" maxlength="500"></textarea></label>
+      </div>
+      <div class="checkout-total"><span>Tổng tạm tính</span><strong id="checkoutTotal">0₫</strong></div>
+      <p id="checkoutError" class="form-error" role="alert"></p>
+      <button id="submitOrderButton" class="primary-button full-width" type="submit">Xác nhận lưu đơn</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="/js/app.js" defer></script>
+</body>
+</html>
