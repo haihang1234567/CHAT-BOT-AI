@@ -9,10 +9,16 @@ const crypto = require('crypto');
 const config = require('./src/config');
 const JsonStore = require('./src/store');
 const { ProductService, normalizeText } = require('./src/productService');
+const HaravanService = require('./src/haravanService');
 const AiService = require('./src/aiService');
 
 const store = new JsonStore(config.storePath);
-const products = new ProductService(config.productCsvPath, config.shopDomain);
+const loadCsvAtStart = config.productSource === 'csv'
+  || (config.haravan.fallbackToCsv && fs.existsSync(config.productCsvPath));
+const products = new ProductService(config.productCsvPath, config.shopDomain, {
+  loadCsv: loadCsvAtStart
+});
+const haravan = new HaravanService(config.haravan, products);
 const ai = new AiService(config.ai, products);
 const publicDir = path.resolve(__dirname, 'public');
 
@@ -168,6 +174,9 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       ok: true,
       productCount: products.products.length,
+      catalog: products.status(),
+      productSource: config.productSource,
+      haravan: haravan.status(),
       aiConfigured: ai.isConfigured(),
       localFirst: false,
       twoStageAi: true,
@@ -473,6 +482,38 @@ async function handleApi(req, res, url) {
 
   if (pathname.startsWith('/api/admin/') && !ensureAdmin(req, res)) return;
 
+  if (req.method === 'GET' && pathname === '/api/admin/catalog-status') {
+    return sendJson(res, 200, {
+      source: config.productSource,
+      catalog: products.status(),
+      haravan: haravan.status()
+    });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/admin/catalog-sync') {
+    if (config.productSource !== 'haravan') {
+      return sendJson(res, 400, { error: 'PRODUCT_SOURCE hiện không đặt là haravan.' });
+    }
+    if (!haravan.isConfigured()) {
+      return sendJson(res, 400, { error: 'Chưa cấu hình HARAVAN_ACCESS_TOKEN.' });
+    }
+    try {
+      const stats = await haravan.sync();
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'Đồng bộ Haravan thành công.',
+        stats,
+        catalog: products.status()
+      });
+    } catch (error) {
+      return sendJson(res, 502, {
+        ok: false,
+        error: error.message,
+        catalog: products.status()
+      });
+    }
+  }
+
   if (req.method === 'GET' && pathname === '/api/admin/sessions') {
     return sendJson(res, 200, { sessions: store.listSessions() });
   }
@@ -602,5 +643,23 @@ setInterval(() => {
 server.listen(config.port, '0.0.0.0', () => {
   console.log(`Chatbot: http://localhost:${config.port}`);
   console.log(`Admin:   http://localhost:${config.port}/admin.html`);
+  console.log(`Dữ liệu: ${config.productSource === 'haravan' ? 'Haravan API' : 'CSV local'}`);
   console.log(`AI:      ${ai.isConfigured() ? 'Đã cấu hình 2 tầng (Router → Database code → Final)' : 'Chưa cấu hình - đang dùng tìm kiếm local dự phòng'}`);
+
+  if (config.productSource === 'haravan') {
+    if (!haravan.isConfigured()) {
+      console.error('Chưa có HARAVAN_ACCESS_TOKEN; chatbot đang giữ dữ liệu CSV dự phòng nếu có.');
+      return;
+    }
+    haravan.sync()
+      .catch((error) => {
+        console.error(`Đồng bộ Haravan ban đầu thất bại: ${error.message}`);
+        console.error('Chatbot tiếp tục dùng dữ liệu đang có và sẽ tự thử lại.');
+      })
+      .finally(() => {
+        haravan.startAutoSync((error) => {
+          console.error(`Đồng bộ Haravan định kỳ thất bại: ${error.message}`);
+        });
+      });
+  }
 });
