@@ -13,6 +13,10 @@ function booleanValue(value, fallback = false) {
 }
 
 const sharedModel = String(process.env.AI_MODEL || '');
+const haravanToken = String(process.env.HARAVAN_ACCESS_TOKEN || '').trim();
+const productSource = String(process.env.PRODUCT_SOURCE || (haravanToken ? 'haravan' : 'csv'))
+  .trim()
+  .toLowerCase();
 
 module.exports = {
   port: Number(process.env.PORT || 3100),
@@ -20,6 +24,21 @@ module.exports = {
   productCsvPath: resolveProjectPath(process.env.PRODUCT_CSV_PATH, './data/products.csv'),
   storePath: resolveProjectPath(process.env.STORE_PATH, './data/local-store.json'),
   adminPassword: String(process.env.ADMIN_PASSWORD || '123456'),
+  productSource: ['haravan', 'csv'].includes(productSource) ? productSource : 'csv',
+  haravan: {
+    baseUrl: String(process.env.HARAVAN_API_BASE_URL || 'https://apis.haravan.com/com').replace(/\/$/, ''),
+    token: haravanToken,
+    timeoutMs: Math.max(3000, Number(process.env.HARAVAN_TIMEOUT_MS || 30000)),
+    pageSize: Math.max(1, Math.min(250, Number(process.env.HARAVAN_PAGE_SIZE || 50))),
+    syncIntervalMs: Math.max(60000, Number(process.env.HARAVAN_SYNC_INTERVAL_MS || 600000)),
+    includeUnpublished: booleanValue(process.env.HARAVAN_INCLUDE_UNPUBLISHED, false),
+    useLocationInventory: booleanValue(process.env.HARAVAN_USE_LOCATION_INVENTORY, true),
+    locationIds: String(process.env.HARAVAN_LOCATION_IDS || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+    fallbackToCsv: booleanValue(process.env.HARAVAN_FALLBACK_TO_CSV, true)
+  },
   ai: {
     baseUrl: String(process.env.ANTHROPIC_BASE_URL || 'https://llm.wokushop.com').replace(/\/$/, ''),
     token: String(process.env.ANTHROPIC_AUTH_TOKEN || ''),
