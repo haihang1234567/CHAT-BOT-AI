@@ -80,6 +80,25 @@ function normalizeText(value) {
     .trim();
 }
 
+function canonicalSearchText(value) {
+  let text = normalizeText(value);
+  const replacements = [
+    [/\b(?:pick|pickle|pickball|pickeball|pickelball|picleball|picklebal|pkl)\b/g, 'pickleball'],
+    [/\b(?:volley|volleyball)\b/g, 'bong chuyen'],
+    [/\bbadminton\b/g, 'cau long'],
+    [/\b(?:soccer|football)\b/g, 'bong da'],
+    [/\bda bong\b/g, 'bong da'],
+    [/\b(?:running|jogging)\b/g, 'chay bo'],
+    [/\bbasketball\b/g, 'bong ro'],
+    [/\b(?:table tennis|ping pong|pingpong)\b/g, 'bong ban'],
+    [/\b(?:shoe|shoes|sneaker|sneakers)\b/g, 'giay']
+  ];
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 function stripHtml(html) {
   return clean(html)
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -98,7 +117,7 @@ function unique(values) {
 }
 
 function termInText(text, rawTerm) {
-  const term = normalizeText(rawTerm);
+  const term = canonicalSearchText(rawTerm);
   if (!term) return false;
   if (/^[a-z0-9]{1,3}$/.test(term)) {
     return new RegExp(`(?:^|\\s)${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|\\s)`).test(text);
@@ -301,7 +320,7 @@ class ProductService {
     product.hasSale = product.variants.some(
       (variant) => variant.compareAtPrice > variant.price && variant.price > 0
     );
-    product.identityText = normalizeText([
+    product.identityText = canonicalSearchText([
       product.name,
       product.brand,
       product.type,
@@ -310,7 +329,7 @@ class ProductService {
       ...(product.collections || []),
       ...(product.collectionHandles || [])
     ].join(' '));
-    product.searchText = normalizeText([
+    product.searchText = canonicalSearchText([
       product.name,
       product.brand,
       product.type,
@@ -383,7 +402,7 @@ class ProductService {
     const exact = this.exactLookup(query);
     if (exact) return [this.publicProduct(exact.product, exact.variant)];
 
-    const normalized = normalizeText(query);
+    const normalized = canonicalSearchText(query);
     const stopWords = new Set(['co', 'gi', 'nao', 'cho', 'toi', 'tim', 'can', 'muon', 'gia', 'bao', 'nhieu', 'tien', 'tam', 'khoang', 'duoi', 'tren', 'tu', 'den', 'san', 'pham', 'tu', 'van', 'goi', 'y', 'xem', 'chi', 'tiet']);
     const tokens = normalized.split(' ').filter((token) => token.length > 1 && !stopWords.has(token));
     const priceIntent = parsePriceIntent(query);
@@ -435,7 +454,7 @@ class ProductService {
 
   normalizedList(value) {
     return Array.isArray(value)
-      ? value.map(normalizeText).filter(Boolean)
+      ? value.map(canonicalSearchText).filter(Boolean)
       : [];
   }
 
@@ -683,4 +702,4 @@ class ProductService {
   }
 }
 
-module.exports = { ProductService, normalizeText };
+module.exports = { ProductService, normalizeText, canonicalSearchText };
