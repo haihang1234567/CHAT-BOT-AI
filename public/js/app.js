@@ -133,6 +133,14 @@
     return Math.max(...saleVariants.map((v) => Math.round((1 - v.price / v.compareAtPrice) * 100)));
   }
 
+  function uniqueValues(values) {
+    return [...new Set((values || []).filter(Boolean))];
+  }
+
+  function variantCode(product, variant) {
+    return variant?.sku || variant?.id || product.id;
+  }
+
   function renderProductGrid(products) {
     const grid = create('div', 'product-grid');
     for (const product of products) grid.appendChild(renderProductCard(product));
@@ -140,15 +148,22 @@
   }
 
   function renderProductCard(product) {
+    const variants = [...(product.variants || [])];
+    let selectedVariant = variants.find((variant) => variant.id === product.matchedVariantId)
+      || variants.find((variant) => variant.inStock)
+      || variants[0]
+      || null;
+    let selectedColor = selectedVariant?.color || '';
+
     const card = create('article', 'product-card');
     const imageWrap = create('div', 'product-image-wrap');
     const image = create('img', 'product-image');
     image.alt = product.name;
     image.loading = 'lazy';
-    safeImage(image, product.images?.[0] || product.variants?.find((v) => v.image)?.image || PLACEHOLDER_IMAGE);
+    safeImage(image, selectedVariant?.image || product.images?.[0] || PLACEHOLDER_IMAGE);
     imageWrap.appendChild(image);
 
-    const stock = create('span', `stock-pill${product.inStock ? '' : ' out'}`, product.inStock ? 'Còn hàng' : 'Hết hàng');
+    const stock = create('span', 'stock-pill');
     imageWrap.appendChild(stock);
     const percent = salePercent(product);
     if (percent) imageWrap.appendChild(create('span', 'sale-pill', `-${percent}%`));
@@ -156,23 +171,58 @@
     const body = create('div', 'product-body');
     body.appendChild(create('p', 'product-brand', [product.brand, product.type].filter(Boolean).join(' · ') || 'GHS SPORT'));
     body.appendChild(create('h3', 'product-title', product.name));
-    body.appendChild(create('p', 'product-code', `Mã sản phẩm: ${product.id}`));
+    const code = create('p', 'product-code');
+    body.appendChild(code);
 
     const price = create('div', 'price-row');
-    const currentPrice = create('span', product.hasSale ? 'sale-price' : 'regular-price', priceRange(product.priceMin, product.priceMax));
+    const currentPrice = create('span');
     price.appendChild(currentPrice);
-    if (product.hasSale && product.compareAtMax > 0) {
-      price.appendChild(create('span', 'original-price', priceRange(product.compareAtMin, product.compareAtMax)));
-    }
+    const originalPrice = create('span', 'original-price');
+    price.appendChild(originalPrice);
     body.appendChild(price);
 
     const attrs = create('div', 'product-attributes');
-    const colorLine = create('div');
-    colorLine.append(create('strong', '', 'Màu: '), document.createTextNode(product.colors?.join(', ') || 'Đang cập nhật'));
-    const sizeLine = create('div');
-    sizeLine.append(create('strong', '', 'Size: '), document.createTextNode(product.sizes?.join(', ') || 'Mặc định'));
-    attrs.append(colorLine, sizeLine);
-    body.appendChild(attrs);
+    const colors = uniqueValues(variants.map((variant) => variant.color));
+    let colorButtons = [];
+    let sizeButtons = [];
+    let sizeGroup = null;
+
+    if (colors.length) {
+      const colorGroup = create('div', 'variant-group');
+      colorGroup.appendChild(create('strong', 'variant-label', 'Màu'));
+      const colorOptions = create('div', 'variant-options');
+      colorButtons = colors.map((color) => {
+        const button = create('button', 'variant-option', color);
+        button.type = 'button';
+        button.dataset.value = color;
+        button.addEventListener('click', () => {
+          selectedColor = color;
+          const sameSize = selectedVariant?.size
+            ? variants.find((variant) => variant.color === color && variant.size === selectedVariant.size && variant.inStock)
+            : null;
+          selectedVariant = sameSize
+            || variants.find((variant) => variant.color === color && variant.inStock)
+            || variants.find((variant) => variant.color === color)
+            || selectedVariant;
+          renderSizeOptions();
+          updateCard();
+        });
+        colorOptions.appendChild(button);
+        return button;
+      });
+      colorGroup.appendChild(colorOptions);
+      attrs.appendChild(colorGroup);
+    }
+
+    const hasSizes = variants.some((variant) => variant.size);
+    if (hasSizes) {
+      sizeGroup = create('div', 'variant-group');
+      sizeGroup.appendChild(create('strong', 'variant-label', 'Size'));
+      sizeGroup.appendChild(create('div', 'variant-options size-options'));
+      attrs.appendChild(sizeGroup);
+    }
+
+    if (attrs.childElementCount) body.appendChild(attrs);
 
     const actions = create('div', 'product-actions');
     const detail = create('a', '', 'Xem chi tiết');
@@ -181,11 +231,77 @@
     detail.rel = 'noopener noreferrer';
     const buy = create('button', '', 'Chọn mua');
     buy.type = 'button';
-    buy.disabled = !product.inStock;
-    buy.addEventListener('click', () => openVariantDialog(product));
+    buy.addEventListener('click', () => openVariantDialog(product, selectedVariant?.id));
     actions.append(detail, buy);
     body.appendChild(actions);
 
+    function variantsForSelectedColor() {
+      return selectedColor
+        ? variants.filter((variant) => variant.color === selectedColor)
+        : variants;
+    }
+
+    function renderSizeOptions() {
+      if (!sizeGroup) return;
+      const options = sizeGroup.querySelector('.size-options');
+      options.textContent = '';
+      const sizes = uniqueValues(variantsForSelectedColor().map((variant) => variant.size))
+        .sort((a, b) => String(a).localeCompare(String(b), 'vi', { numeric: true }));
+      sizeButtons = sizes.map((size) => {
+        const matching = variantsForSelectedColor().filter((variant) => variant.size === size);
+        const available = matching.some((variant) => variant.inStock);
+        const button = create('button', 'variant-option size-option', size);
+        button.type = 'button';
+        button.dataset.value = size;
+        button.disabled = !available;
+        button.title = available ? `Chọn size ${size}` : `Size ${size} hiện hết hàng`;
+        button.addEventListener('click', () => {
+          selectedVariant = matching.find((variant) => variant.inStock) || matching[0] || selectedVariant;
+          updateCard();
+        });
+        options.appendChild(button);
+        return button;
+      });
+    }
+
+    function updateCard() {
+      if (!selectedVariant) {
+        code.textContent = `Mã sản phẩm: ${product.id}`;
+        currentPrice.className = 'regular-price';
+        currentPrice.textContent = priceRange(product.priceMin, product.priceMax);
+        originalPrice.hidden = true;
+        stock.textContent = product.inStock ? 'Còn hàng' : 'Hết hàng';
+        stock.classList.toggle('out', !product.inStock);
+        buy.disabled = !product.inStock;
+        return;
+      }
+
+      selectedColor = selectedVariant.color || selectedColor;
+      safeImage(image, selectedVariant.image || product.images?.[0] || PLACEHOLDER_IMAGE);
+      code.textContent = `Mã phiên bản: ${variantCode(product, selectedVariant)}`;
+      const onSale = selectedVariant.price > 0 && selectedVariant.compareAtPrice > selectedVariant.price;
+      currentPrice.className = onSale ? 'sale-price' : 'regular-price';
+      currentPrice.textContent = selectedVariant.price > 0 ? formatMoney(selectedVariant.price) : 'Liên hệ';
+      originalPrice.hidden = !onSale;
+      originalPrice.textContent = onSale ? formatMoney(selectedVariant.compareAtPrice) : '';
+      stock.textContent = selectedVariant.inStock ? 'Còn hàng' : 'Hết hàng';
+      stock.classList.toggle('out', !selectedVariant.inStock);
+      buy.disabled = !selectedVariant.inStock;
+
+      colorButtons.forEach((button) => {
+        const active = button.dataset.value === selectedVariant.color;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+      sizeButtons.forEach((button) => {
+        const active = button.dataset.value === selectedVariant.size;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+
+    renderSizeOptions();
+    updateCard();
     card.append(imageWrap, body);
     return card;
   }
@@ -195,7 +311,7 @@
     return `${attributes || variant.sku || variant.id} · ${variant.inStock ? 'Còn hàng' : 'Hết hàng'} · ${formatMoney(variant.price)}`;
   }
 
-  function openVariantDialog(product) {
+  function openVariantDialog(product, preferredVariantId = null) {
     state.activeProduct = product;
     els.variantProductName.textContent = product.name;
     els.variantSelect.textContent = '';
@@ -209,7 +325,8 @@
       els.variantSelect.appendChild(option);
     }
 
-    const preferred = variants.find((variant) => variant.id === product.matchedVariantId && variant.inStock)
+    const preferred = variants.find((variant) => variant.id === preferredVariantId && variant.inStock)
+      || variants.find((variant) => variant.id === product.matchedVariantId && variant.inStock)
       || variants.find((variant) => variant.inStock);
     if (!preferred) {
       showToast('Sản phẩm hiện đã hết hàng.');
