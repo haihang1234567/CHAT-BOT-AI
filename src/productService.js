@@ -1,12 +1,28 @@
 const fs = require('fs');
 
 
-function parseCsvObjects(input) {
+function forEachCsvObject(input, callback) {
   const text = String(input || '').replace(/^\uFEFF/, '');
-  const table = [];
+  let headers = null;
   let row = [];
   let field = '';
   let quoted = false;
+
+  const consumeRow = () => {
+    if (!row.some((value) => value !== '')) {
+      row = [];
+      return;
+    }
+
+    if (!headers) {
+      headers = row.map((header) => header.trim());
+    } else {
+      const object = {};
+      headers.forEach((header, index) => { object[header] = row[index] ?? ''; });
+      callback(object);
+    }
+    row = [];
+  };
 
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index];
@@ -31,23 +47,14 @@ function parseCsvObjects(input) {
     } else if (char === '\n') {
       row.push(field.replace(/\r$/, ''));
       field = '';
-      if (row.some((value) => value !== '')) table.push(row);
-      row = [];
+      consumeRow();
     } else {
       field += char;
     }
   }
 
   row.push(field.replace(/\r$/, ''));
-  if (row.some((value) => value !== '')) table.push(row);
-  if (!table.length) return [];
-
-  const headers = table[0].map((header) => header.trim());
-  return table.slice(1).map((values) => {
-    const object = {};
-    headers.forEach((header, index) => { object[header] = values[index] ?? ''; });
-    return object;
-  });
+  consumeRow();
 }
 
 function clean(value) {
@@ -131,12 +138,12 @@ class ProductService {
       throw new Error(`Không tìm thấy file CSV: ${this.csvPath}`);
     }
 
-    const rows = parseCsvObjects(fs.readFileSync(this.csvPath, 'utf8'));
-
     const grouped = new Map();
-    for (const row of rows) {
+    let rowCount = 0;
+    forEachCsvObject(fs.readFileSync(this.csvPath, 'utf8'), (row) => {
+      rowCount += 1;
       const productId = clean(row['Mã sản phẩm']);
-      if (!productId) continue;
+      if (!productId) return;
 
       let product = grouped.get(productId);
       if (!product) {
@@ -174,7 +181,7 @@ class ProductService {
 
       product.variants.push(variant);
       product.images.push(clean(row['Ảnh biến thể']), clean(row['Link hình']));
-    }
+    });
 
     this.products = [...grouped.values()].map((product) => this.finalizeProduct(product));
     this.productById.clear();
@@ -194,7 +201,7 @@ class ProductService {
       }
     }
 
-    console.log(`Đã nạp ${rows.length} dòng biến thể / ${this.products.length} sản phẩm.`);
+    console.log(`Đã nạp ${rowCount} dòng biến thể / ${this.products.length} sản phẩm.`);
   }
 
   pickAttribute(row, acceptedNames) {
