@@ -64,7 +64,7 @@ Mật khẩu admin mặc định của bản test: `123456`.
 Dùng cùng một model cho cả hai lần gọi:
 
 ```env
-ANTHROPIC_BASE_URL=https://llm.wokshop.com
+ANTHROPIC_BASE_URL=https://llm.wokushop.com
 ANTHROPIC_AUTH_TOKEN=TOKEN_CUA_BAN
 AI_MODEL=TEN_MODEL
 ```
