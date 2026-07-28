@@ -21,7 +21,7 @@ module.exports = {
   storePath: resolveProjectPath(process.env.STORE_PATH, './data/local-store.json'),
   adminPassword: String(process.env.ADMIN_PASSWORD || '123456'),
   ai: {
-    baseUrl: String(process.env.ANTHROPIC_BASE_URL || 'https://llm.wokshop.com').replace(/\/$/, ''),
+    baseUrl: String(process.env.ANTHROPIC_BASE_URL || 'https://llm.wokushop.com').replace(/\/$/, ''),
     token: String(process.env.ANTHROPIC_AUTH_TOKEN || ''),
     model: sharedModel,
     routerModel: String(process.env.AI_ROUTER_MODEL || sharedModel),
