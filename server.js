@@ -10,12 +10,10 @@ const config = require('./src/config');
 const JsonStore = require('./src/store');
 const { ProductService, normalizeText } = require('./src/productService');
 const AiService = require('./src/aiService');
-const LocalChatEngine = require('./src/localChatEngine');
 
 const store = new JsonStore(config.storePath);
 const products = new ProductService(config.productCsvPath, config.shopDomain);
 const ai = new AiService(config.ai, products);
-const localChat = new LocalChatEngine(products);
 const publicDir = path.resolve(__dirname, 'public');
 
 const customerStreams = new Map();
@@ -128,7 +126,7 @@ function productCardsByIds(ids, fallbackCandidates = []) {
       selected.push(product);
     }
   }
-  return selected.length ? selected : fallbackCandidates.slice(0, 5);
+  return Array.isArray(ids) ? selected : fallbackCandidates.slice(0, 5);
 }
 
 function fallbackAnswer(message, candidates) {
@@ -272,10 +270,14 @@ async function handleApi(req, res, url) {
     let databaseCandidates = [];
 
     if (!ai.isConfigured()) {
-      const localResult = localChat.analyze(messageText, history);
+      const route = ai.fallbackRoute(messageText, history, 'AI chưa được cấu hình.');
+      const candidates = route.needDatabase
+        ? products.queryByPlan(route, messageText, route.search.limit)
+        : [];
+      const localResult = ai.fallbackFinal(messageText, route, candidates, 'AI chưa được cấu hình.');
       responseData = {
         reply: localResult.reply || 'AI chưa được cấu hình. Mình đã tìm sản phẩm bằng dữ liệu local.',
-        products: localResult.products || [],
+        products: productCardsByIds(localResult.productIds, candidates),
         needsAdmin: false
       };
       source = 'local-no-ai';
@@ -304,6 +306,23 @@ async function handleApi(req, res, url) {
             reply: replyText,
             products: [],
             sessionStatus: 'waiting_admin',
+            messageId: replyMessage.id,
+            source: replyMessage.source
+          });
+        }
+
+        if (route.responseMode === 'clarify' && route.clarificationQuestion) {
+          const replyMessage = store.addMessage(sessionId, 'assistant', route.clarificationQuestion, {
+            source: route.cached ? 'ai-router-cache-clarify' : 'ai-router-clarify',
+            route: routeMeta
+          });
+          emitCustomer(sessionId, 'chat-message', replyMessage);
+          emitAdmin('message-new', { sessionId, message: replyMessage });
+          emitSession(sessionId);
+          return sendJson(res, 200, {
+            reply: route.clarificationQuestion,
+            products: [],
+            sessionStatus: session.status,
             messageId: replyMessage.id,
             source: replyMessage.source
           });
@@ -338,10 +357,16 @@ async function handleApi(req, res, url) {
         }
       } catch (error) {
         console.error('Lỗi luồng AI hai tầng:', error.message);
-        const localResult = localChat.analyze(messageText, history);
+        const route = ai.fallbackRoute(messageText, history, error.message);
+        const candidates = route.needDatabase
+          ? products.queryByPlan(route, messageText, route.search.limit)
+          : [];
+        const localResult = ai.fallbackFinal(messageText, route, candidates, error.message);
         responseData = {
           reply: localResult.reply || 'AI đang tạm thời chưa kết nối. Mình đã thử tìm sản phẩm bằng dữ liệu local; bạn cũng có thể gõ “admin” để gặp nhân viên.',
-          products: databaseCandidates.length ? databaseCandidates : (localResult.products || []),
+          products: databaseCandidates.length
+            ? databaseCandidates
+            : productCardsByIds(localResult.productIds, candidates),
           needsAdmin: false
         };
         source = databaseCandidates.length ? 'database-after-ai-error' : 'local-after-ai-error';
