@@ -132,14 +132,16 @@ function parsePriceIntent(rawQuery) {
 }
 
 class ProductService {
-  constructor(csvPath, shopDomain) {
+  constructor(csvPath, shopDomain, options = {}) {
     this.csvPath = csvPath;
     this.shopDomain = shopDomain;
     this.products = [];
     this.productById = new Map();
     this.variantById = new Map();
     this.codeIndex = new Map();
-    this.load();
+    this.source = 'empty';
+    this.lastLoadedAt = null;
+    if (options.loadCsv !== false) this.load();
   }
 
   load() {
@@ -192,25 +194,79 @@ class ProductService {
       product.images.push(clean(row['Ảnh biến thể']), clean(row['Link hình']));
     });
 
-    this.products = [...grouped.values()].map((product) => this.finalizeProduct(product));
-    this.productById.clear();
-    this.variantById.clear();
-    this.codeIndex.clear();
+    this.replaceProducts([...grouped.values()], 'csv');
+    console.log(`Đã nạp ${rowCount} dòng biến thể / ${this.products.length} sản phẩm từ CSV.`);
+  }
 
-    for (const product of this.products) {
-      this.productById.set(product.id, product);
-      this.addCode(product.id, { product, variant: null });
+  replaceProducts(products, source = 'memory') {
+    const finalized = (Array.isArray(products) ? products : [])
+      .map((product) => this.finalizeProduct({
+        ...product,
+        id: clean(product.id),
+        name: clean(product.name),
+        slug: clean(product.slug),
+        url: clean(product.url) || this.shopDomain,
+        brand: clean(product.brand),
+        type: clean(product.type),
+        tags: clean(product.tags),
+        description: clean(product.description),
+        excerpt: clean(product.excerpt),
+        images: Array.isArray(product.images) ? product.images : [],
+        variants: (Array.isArray(product.variants) ? product.variants : []).map((variant) => ({
+          ...variant,
+          id: clean(variant.id),
+          sku: clean(variant.sku),
+          barcode: clean(variant.barcode),
+          color: clean(variant.color),
+          size: clean(variant.size),
+          quantity: numberValue(variant.quantity),
+          inStock: Boolean(variant.inStock),
+          price: numberValue(variant.price),
+          compareAtPrice: numberValue(variant.compareAtPrice),
+          image: clean(variant.image)
+        })),
+        collections: Array.isArray(product.collections) ? product.collections : [],
+        collectionHandles: Array.isArray(product.collectionHandles) ? product.collectionHandles : []
+      }))
+      .filter((product) => product.id);
+
+    const nextProductById = new Map();
+    const nextVariantById = new Map();
+    const nextCodeIndex = new Map();
+    const addCode = (code, result) => {
+      const normalized = normalizeText(code).replace(/\s/g, '');
+      if (normalized) nextCodeIndex.set(normalized, result);
+    };
+
+    for (const product of finalized) {
+      nextProductById.set(product.id, product);
+      addCode(product.id, { product, variant: null });
       for (const variant of product.variants) {
         if (variant.id) {
-          this.variantById.set(variant.id, { product, variant });
-          this.addCode(variant.id, { product, variant });
+          nextVariantById.set(String(variant.id), { product, variant });
+          addCode(variant.id, { product, variant });
         }
-        if (variant.sku) this.addCode(variant.sku, { product, variant });
-        if (variant.barcode) this.addCode(variant.barcode, { product, variant });
+        if (variant.sku) addCode(variant.sku, { product, variant });
+        if (variant.barcode) addCode(variant.barcode, { product, variant });
       }
     }
 
-    console.log(`Đã nạp ${rowCount} dòng biến thể / ${this.products.length} sản phẩm.`);
+    // Chỉ thay toàn bộ chỉ mục sau khi dữ liệu mới đã được dựng xong.
+    this.products = finalized;
+    this.productById = nextProductById;
+    this.variantById = nextVariantById;
+    this.codeIndex = nextCodeIndex;
+    this.source = source;
+    this.lastLoadedAt = new Date().toISOString();
+  }
+
+  status() {
+    return {
+      source: this.source,
+      productCount: this.products.length,
+      variantCount: this.products.reduce((sum, product) => sum + product.variants.length, 0),
+      lastLoadedAt: this.lastLoadedAt
+    };
   }
 
   pickAttribute(row, acceptedNames) {
@@ -250,13 +306,17 @@ class ProductService {
       product.brand,
       product.type,
       product.tags,
-      product.slug
+      product.slug,
+      ...(product.collections || []),
+      ...(product.collectionHandles || [])
     ].join(' '));
     product.searchText = normalizeText([
       product.name,
       product.brand,
       product.type,
       product.tags,
+      ...(product.collections || []),
+      ...(product.collectionHandles || []),
       product.excerpt,
       product.description.slice(0, 2500),
       ...product.variants.flatMap((variant) => [variant.id, variant.sku, variant.barcode, variant.color, variant.size])
@@ -276,6 +336,7 @@ class ProductService {
       url: product.url,
       brand: product.brand,
       type: product.type,
+      collections: product.collections || [],
       excerpt: product.excerpt,
       description: product.description,
       images: product.images,
