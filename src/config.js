@@ -19,7 +19,7 @@ module.exports = {
   shopDomain: String(process.env.SHOP_DOMAIN || 'https://www.greenholdingsport.vn').replace(/\/$/, ''),
   productCsvPath: resolveProjectPath(process.env.PRODUCT_CSV_PATH, './data/products.csv'),
   storePath: resolveProjectPath(process.env.STORE_PATH, './data/local-store.json'),
-  adminPassword: String(process.env.ADMIN_PASSWORD || 'change-me'),
+  adminPassword: String(process.env.ADMIN_PASSWORD || '123456'),
   ai: {
     baseUrl: String(process.env.ANTHROPIC_BASE_URL || 'https://llm.wokshop.com').replace(/\/$/, ''),
     token: String(process.env.ANTHROPIC_AUTH_TOKEN || ''),
