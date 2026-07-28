@@ -68,8 +68,15 @@ body.customer-page { min-height: 100vh; background: radial-gradient(circle at to
 .sale-price { color: var(--danger); font-size: 18px; font-weight: 900; }
 .regular-price { color: var(--text); font-size: 18px; font-weight: 900; }
 .original-price { color: #8b9691; font-size: 12px; text-decoration: line-through; }
-.product-attributes { display: grid; gap: 5px; margin: 9px 0 12px; color: var(--muted); font-size: 12px; }
-.product-attributes strong { color: var(--text); }
+.product-attributes { display: grid; gap: 10px; margin: 9px 0 12px; color: var(--muted); font-size: 12px; }
+.variant-group { display: grid; gap: 6px; }
+.variant-label { color: var(--text); }
+.variant-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.variant-option { min-height: 30px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--text); background: var(--surface); font-size: 11px; font-weight: 750; }
+.variant-option:hover:not(:disabled) { border-color: #7bbda3; background: var(--primary-soft); }
+.variant-option.active { color: #fff; border-color: var(--primary); background: var(--primary); box-shadow: 0 0 0 2px rgba(8,122,85,.1); }
+.variant-option:disabled { color: #9aa39f; background: #f1f3f2; text-decoration: line-through; }
+.size-option { min-width: 38px; }
 .product-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .product-actions a, .product-actions button { min-height: 38px; display: grid; place-items: center; border-radius: 10px; text-decoration: none; font-weight: 750; font-size: 12px; }
 .product-actions a { border: 1px solid var(--line); background: var(--surface); }
