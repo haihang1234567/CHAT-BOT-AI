@@ -165,13 +165,13 @@ class ProductService {
       }
 
       const color = this.pickAttribute(row, ['Màu', 'Màu sắc', 'Color']);
-      const size = this.pickAttribute(row, ['Size', 'Kích thước', 'Cỡ']);
+      const size = this.pickAttribute(row, ['Size', 'Kích thước', 'Kích cỡ']);
       const variant = {
         id: clean(row['Mã biến thể']),
         sku: clean(row['Mã phiên bản sản phẩm']),
         barcode: clean(row['Barcode']),
-        color: color || clean(row['Giá trị thuộc tính 1']),
-        size: size || clean(row['Giá trị thuộc tính 2']),
+        color,
+        size,
         quantity: numberValue(row['Số lượng tồn kho']),
         inStock: numberValue(row['Số lượng tồn kho']) > 0,
         price: numberValue(row['Giá']),
@@ -209,7 +209,10 @@ class ProductService {
       const key = clean(row[`Thuộc tính ${index}`]);
       if (!key) continue;
       const normalizedKey = normalizeText(key);
-      if (acceptedNames.some((name) => normalizedKey === normalizeText(name))) {
+      if (acceptedNames.some((name) => {
+        const acceptedName = normalizeText(name);
+        return normalizedKey === acceptedName || normalizedKey.startsWith(`${acceptedName} `);
+      })) {
         return clean(row[`Giá trị thuộc tính ${index}`]);
       }
     }
