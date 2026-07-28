@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { normalizeText } = require('./productService');
+const { normalizeText, canonicalSearchText } = require('./productService');
 
 const INTENTS = new Set([
   'greeting',
@@ -212,6 +212,10 @@ class AiService {
       'Giá phải đổi thành số VND nguyên, ví dụ 2 triệu = 2000000.',
       'Khi khách nói “mẫu này”, “mẫu trên”, dùng productIds trong HISTORY nếu có.',
       'Luôn phân tích đủ: bộ môn, môi trường/mặt sân, trình độ, đặc điểm cơ thể hoặc form chân, ngân sách, size, màu và mục đích sử dụng.',
+      'Ưu tiên nội dung tin nhắn hiện tại. Chỉ dùng HISTORY khi khách nói “mẫu này”, “đôi trên” hoặc tham chiếu rõ ràng; không tự lấy bộ môn cũ gán vào câu mới.',
+      'Hiểu viết tắt và sai chính tả phổ biến: pick/pickle/pickelball là pickleball; volley là bóng chuyền; badminton là cầu lông; running/jogging là chạy bộ; soccer/football là bóng đá.',
+      'Phải tách rõ LOẠI HÀNG và BỘ MÔ. “giày pick” là giày pickleball, không phải vợt; “vợt pick” mới là vợt pickleball.',
+      'Nếu khách chỉ nói câu quá ngắn hoặc chưa đủ nghĩa như “giày đi”, không được đoán bộ môn từ lịch sử; hãy đặt responseMode=clarify và hỏi lại.',
       'requirements là điều kiện bắt buộc. Mỗi object là một nhóm OR: sản phẩm chỉ cần khớp một terms trong nhóm.',
       'preferences là điều kiện ưu tiên để xếp hạng, không bắt buộc. excludeTerms là từ nhận diện sản phẩm phải loại bỏ.',
       'Ví dụ sân bóng 5/7 hoặc cỏ nhân tạo: requirements có nhóm TF/AS/cỏ nhân tạo/đinh dăm và excludeTerms có FG, SG.',
@@ -324,6 +328,7 @@ class AiService {
 
     const explicitlyWantsProducts = [
       /\b(tim|goi y|cho xem|xem cac mau|co mau nao|co doi nao|co san pham nao)\b/,
+      /\bco .{0,30}(giay|vot|bong|ao|quan|balo|ba lo|tui|tat) .{0,30}(khong|nao)\b/,
       /\b(mua|chon giup|them vao don|dat hang)\b/,
       /\b(so sanh) .{0,50}\b(mau|doi|san pham)\b/
     ].some((pattern) => pattern.test(q));
@@ -332,17 +337,17 @@ class AiService {
   }
 
   codeSearchRules(message) {
-    const q = normalizeText(message);
+    const q = canonicalSearchText(message);
     const categoryRules = [
       ['giay bong chuyen', /\b(giay bong chuyen|bong chuyen)\b/],
-      ['bong da', /\b(giay bong da|giay da bong|bong da|san co nhan tao|futsal)\b/],
-      ['da bong', /\b(giay bong da|giay da bong|bong da|san co nhan tao|futsal)\b/],
+      ['bong da', /\b(giay bong da|giay da bong|giay (?:da )?san (?:5|7|11)|bong da|san co nhan tao|futsal)\b/],
       ['giay chay bo', /\b(giay chay bo|giay chay|chay bo|chay dia hinh|running|trail running)\b/],
       ['giay cau long', /\b(giay cau long)\b/],
       ['vot cau long', /\b(vot cau long)\b/],
-      ['vot pickleball', /\b(vot pickleball|pickleball)\b/],
+      ['pickleball', /\bpickleball\b/],
       ['giay tennis', /\b(giay tennis|tennis)\b/],
       ['giay bong ro', /\b(giay bong ro|bong ro)\b/],
+      ['bong ban', /\b(bong ban)\b/],
       ['ao', /\b(ao|polo|tee|tank top|jacket)\b/],
       ['quan', /\b(quan|short)\b/],
       ['balo', /\b(balo|ba lo)\b/],
@@ -376,7 +381,26 @@ class AiService {
     const preferences = [];
     const excludeTerms = [];
     const customerNeeds = [];
-    const isFootball = categories.includes('bong da') || categories.includes('da bong');
+    const productKindRules = [
+      { kind: 'shoe', label: 'Giày', terms: ['giày'], pattern: /\b(giay|sneaker|doi giay)\b/ },
+      { kind: 'racket', label: 'Vợt', terms: ['vợt'], pattern: /\b(vot)\b/ },
+      { kind: 'ball', label: 'Quả bóng', terms: ['quả bóng', 'bóng thi đấu'], pattern: /\b(qua bong|trai bong|bong thi dau)\b/ },
+      { kind: 'shirt', label: 'Áo', terms: ['áo'], pattern: /\b(ao|polo|tee|tank top|jacket)\b/ },
+      { kind: 'pants', label: 'Quần', terms: ['quần', 'short'], pattern: /\b(quan|short)\b/ },
+      { kind: 'socks', label: 'Tất', terms: ['tất', 'vớ'], pattern: /\b(tat|vo)\b/ },
+      { kind: 'bag', label: 'Balo hoặc túi', terms: ['balo', 'ba lô', 'túi'], pattern: /\b(balo|ba lo|tui)\b/ }
+    ];
+    const productKind = productKindRules.find((rule) => rule.pattern.test(q)) || null;
+    if (productKind) {
+      requirements.push({
+        label: `Loại sản phẩm: ${productKind.label}`,
+        terms: productKind.terms,
+        scope: 'identity'
+      });
+      customerNeeds.push(`Đúng loại sản phẩm ${productKind.label.toLowerCase()}`);
+    }
+
+    const isFootball = categories.includes('bong da');
     const artificialFootball = isFootball
       && /\b(san (?:5|7)|san co nhan tao|co nhan tao|dinh dam|turf)\b/.test(q);
     const naturalFootball = isFootball
@@ -443,7 +467,40 @@ class AiService {
       excludeTerms: uniqueStrings(excludeTerms),
       minPrice,
       maxPrice,
-      inStockOnly: /\b(con hang|co hang|san pham san co)\b/.test(q)
+      inStockOnly: /\b(con hang|co hang|san pham san co)\b/.test(q),
+      productKind: productKind?.kind || ''
+    };
+  }
+
+  detectedProductKind(value) {
+    const text = canonicalSearchText(value);
+    const rules = [
+      ['shoe', /\b(giay|sneaker)\b/],
+      ['racket', /\b(vot)\b/],
+      ['ball', /\b(qua bong|trai bong|bong thi dau)\b/],
+      ['shirt', /\b(ao|polo|tee|tank top|jacket)\b/],
+      ['pants', /\b(quan|short)\b/],
+      ['socks', /\b(tat|vo)\b/],
+      ['bag', /\b(balo|ba lo|tui)\b/]
+    ];
+    return rules.find(([, pattern]) => pattern.test(text))?.[0] || '';
+  }
+
+  applyCodeClarification(route, message, rules = this.codeSearchRules(message)) {
+    const q = canonicalSearchText(message);
+    const incompleteProductQuestion = /^(?:co )?(?:giay|vot|ao|quan|balo|ba lo|tui)(?: di| nao| khong)?$/.test(q);
+    const hasUsefulConstraint = Boolean(
+      rules.categories.length || rules.brands.length || rules.colors.length || rules.sizes.length
+      || rules.minPrice !== null || rules.maxPrice !== null
+    );
+    if (!incompleteProductQuestion || hasUsefulConstraint) return route;
+
+    const kind = rules.productKind === 'racket' ? 'vợt' : rules.productKind === 'shoe' ? 'giày' : 'sản phẩm';
+    return {
+      ...route,
+      responseMode: 'clarify',
+      clarificationQuestion: `Bạn đang tìm ${kind} cho bộ môn hoặc nhu cầu nào? Ví dụ: bóng đá, chạy bộ, bóng chuyền, cầu lông, tennis hoặc pickleball.`,
+      showProducts: false
     };
   }
 
@@ -451,12 +508,17 @@ class AiService {
     const rules = this.codeSearchRules(message);
     const codeShowProducts = this.codeShowProducts(message);
     const search = route.search || {};
-    const knownSurface = rules.requirements.some((group) => group.scope === 'identity');
+    const knownSurface = rules.requirements.some((group) => (
+      group.scope === 'identity'
+      && /mặt sân|bóng đá trong nhà/i.test(group.label || '')
+    ));
     const surfaceTerms = new Set([
       'tf', 'as', 'fg', 'sg', 'ag', 'ic', 'in', 'turf',
       'co nhan tao', 'co tu nhien', 'dinh dam', 'firm ground', 'futsal', 'san trong nha'
     ]);
     const aiRequirements = (search.requirements || []).filter((group) => {
+      const aiKind = this.detectedProductKind((group.terms || []).join(' '));
+      if (rules.productKind && aiKind && aiKind !== rules.productKind) return false;
       if (!knownSurface) return true;
       return !(group.terms || []).some((term) => surfaceTerms.has(normalizeText(term)));
     });
@@ -466,13 +528,18 @@ class AiService {
     const beigeExplicit = /\b(?:mau|color)\s+(?:be|beige)\b|\bbeige\b/.test(normalizeText(message));
     const aiColors = (search.colors || []).filter((color) => normalizeText(color) !== 'be' || beigeExplicit);
 
-    return {
+    const aiCategories = (search.categories || []).filter((category) => {
+      const aiKind = this.detectedProductKind(category);
+      return !rules.productKind || !aiKind || aiKind === rules.productKind;
+    });
+
+    return this.applyCodeClarification({
       ...route,
       showProducts: codeShowProducts === null ? route.showProducts : codeShowProducts,
       search: {
         ...search,
         brands: uniqueStrings([...(rules.brands || []), ...(search.brands || [])]),
-        categories: uniqueStrings([...(rules.categories || []), ...(search.categories || [])]),
+        categories: uniqueStrings([...(rules.categories || []), ...aiCategories]),
         colors: uniqueStrings([...(rules.colors || []), ...aiColors]),
         sizes: uniqueStrings([...(rules.sizes || []), ...(search.sizes || [])]),
         customerNeeds: uniqueStrings([...(rules.customerNeeds || []), ...(search.customerNeeds || [])]),
@@ -483,7 +550,7 @@ class AiService {
         maxPrice: rules.maxPrice !== null ? rules.maxPrice : search.maxPrice,
         inStockOnly: rules.inStockOnly || Boolean(search.inStockOnly)
       }
-    };
+    }, message, rules);
   }
 
   fallbackRoute(message, history = [], warning = '') {
@@ -564,7 +631,7 @@ class AiService {
       }
     };
     return {
-      ...this.normalizeRoute(raw, message),
+      ...this.applyCodeClarification(this.normalizeRoute(raw, message), message, codeRules),
       _source: 'code-router-fallback',
       _warning: cleanString(warning, 500)
     };
@@ -577,7 +644,9 @@ class AiService {
     if (route?.showProducts === false) {
       const q = normalizeText(message);
       const footLength = q.match(/(\d+(?:\.\d+)?)\s*cm/);
-      if (footLength && /\b(chieu dai ban chan|do dai ban chan|ban chan|size)\b/.test(q)) {
+      if (route.responseMode === 'clarify' && route.clarificationQuestion) {
+        reply = route.clarificationQuestion;
+      } else if (footLength && /\b(chieu dai ban chan|do dai ban chan|ban chan|size)\b/.test(q)) {
         reply = `Bàn chân dài ${footLength[1]} cm chưa thể chốt một size chung cho mọi mẫu vì mỗi dòng giày có bảng quy đổi khác nhau. Bạn cho mình biết đúng tên mẫu hoặc mã sản phẩm đang quan tâm, mình sẽ đối chiếu size phù hợp và không cần hiển thị lại danh sách ảnh.`;
       } else {
         reply = 'Mình hiểu đây là câu hỏi chỉ cần trả lời bằng thông tin, không cần hiển thị sản phẩm. Hiện AI đang tạm thời chưa kết nối nên mình chưa muốn suy đoán; bạn thử gửi lại sau ít phút hoặc gõ “admin” để được hỗ trợ chính xác.';
