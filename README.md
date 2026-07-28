@@ -57,7 +57,7 @@ Xem chi tiết tại `TWO_STAGE_AI.md`.
    - Khách: `http://localhost:3100`
    - Nhân viên: `http://localhost:3100/admin.html`
 
-Mật khẩu admin mặc định: `change-me`. Hãy đổi trong `.env`.
+Mật khẩu admin mặc định của bản test: `123456`.
 
 ## Cấu hình API AI
 
