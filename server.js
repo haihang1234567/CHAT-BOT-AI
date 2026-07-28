@@ -490,6 +490,18 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (req.method === 'GET' && pathname === '/api/admin/products/search') {
+    const query = String(searchParams.get('q') || '').trim().slice(0, 200);
+    const requestedLimit = Number(searchParams.get('limit') || 12);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(20, requestedLimit))
+      : 12;
+    return sendJson(res, 200, {
+      query,
+      products: query ? products.search(query, limit) : []
+    });
+  }
+
   if (req.method === 'POST' && pathname === '/api/admin/catalog-sync') {
     if (config.productSource !== 'haravan') {
       return sendJson(res, 400, { error: 'PRODUCT_SOURCE hiện không đặt là haravan.' });
@@ -564,16 +576,30 @@ async function handleApi(req, res, url) {
   match = matchPath(pathname, /^\/api\/admin\/sessions\/([^/]+)\/messages$/);
   if (req.method === 'POST' && match) {
     const body = await readJson(req);
-    const text = String(body.message || '').trim().slice(0, 3000);
+    const requestedProductIds = Array.isArray(body.productIds)
+      ? body.productIds.map(String).slice(0, 5)
+      : [];
+    const selectedProducts = productCardsByIds(requestedProductIds);
+    const text = String(body.message || '').trim().slice(0, 3000)
+      || (selectedProducts.length ? 'Mình gửi bạn một số sản phẩm phù hợp để tham khảo nhé.' : '');
     const adminName = String(body.adminName || 'Nhân viên GHS').trim().slice(0, 80);
-    if (!text) return sendJson(res, 400, { error: 'Nội dung tin nhắn đang trống.' });
+    if (!text && !selectedProducts.length) {
+      return sendJson(res, 400, { error: 'Hãy nhập tin nhắn hoặc chọn ít nhất một sản phẩm.' });
+    }
+    if (requestedProductIds.length && !selectedProducts.length) {
+      return sendJson(res, 400, { error: 'Không tìm thấy sản phẩm đã chọn trong kho hiện tại.' });
+    }
     const sessionId = match[0];
     store.setSessionStatus(sessionId, 'human', adminName);
-    const message = store.addMessage(sessionId, 'admin', text, { adminName });
-    emitCustomer(sessionId, 'chat-message', message);
-    emitAdmin('message-new', { sessionId, message });
+    const message = store.addMessage(sessionId, 'admin', text, {
+      adminName,
+      productIds: selectedProducts.map((product) => product.id)
+    });
+    const deliveredMessage = { ...message, products: selectedProducts };
+    emitCustomer(sessionId, 'chat-message', deliveredMessage);
+    emitAdmin('message-new', { sessionId, message: deliveredMessage });
     emitSession(sessionId);
-    return sendJson(res, 200, { message });
+    return sendJson(res, 200, { message: deliveredMessage });
   }
 
   if (req.method === 'GET' && pathname === '/api/admin/orders') {
