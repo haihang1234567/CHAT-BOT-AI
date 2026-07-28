@@ -64,6 +64,27 @@
               </div>
             </div>
             <div id="adminMessages" class="chat-messages admin-messages"></div>
+            <div class="admin-product-tools">
+              <button id="toggleProductSearch" class="secondary-button" type="button" aria-expanded="false">
+                🔎 Tìm và gửi sản phẩm
+              </button>
+              <span id="selectedProductCount" class="selected-product-count">Chưa chọn sản phẩm</span>
+            </div>
+            <section id="adminProductPanel" class="admin-product-panel" hidden>
+              <form id="adminProductSearchForm" class="admin-product-search">
+                <input id="adminProductSearchInput" class="field-control" type="search"
+                  placeholder="Nhập tên, mã sản phẩm, SKU hoặc Barcode..." maxlength="200" autocomplete="off">
+                <button class="secondary-button" type="submit">Tìm</button>
+              </form>
+              <div id="adminProductSearchStatus" class="admin-product-search-status">
+                Tìm sản phẩm trong dữ liệu Haravan hoặc CSV hiện tại.
+              </div>
+              <div id="adminProductResults" class="admin-product-results"></div>
+              <div class="admin-product-send">
+                <textarea id="adminProductMessage" rows="2" maxlength="3000">Mình gửi bạn một số sản phẩm phù hợp để tham khảo nhé.</textarea>
+                <button id="sendSelectedProducts" class="primary-button" type="button" disabled>Gửi sản phẩm đã chọn</button>
+              </div>
+            </section>
             <form id="adminMessageForm" class="chat-composer admin-composer">
               <textarea id="adminMessageInput" rows="1" maxlength="3000" placeholder="Nhập tin nhắn trả lời khách..." required></textarea>
               <button class="primary-button" type="submit">Gửi</button>
