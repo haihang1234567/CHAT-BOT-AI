@@ -1,6 +1,6 @@
 # GHS Local Chatbot – AI hai tầng
 
-Chatbot tư vấn sản phẩm Green Holding Sport chạy thử trên máy tính, đọc dữ liệu trực tiếp từ `data/products.csv` và sử dụng AI theo kiến trúc:
+Chatbot tư vấn sản phẩm Green Holding Sport có thể đọc sản phẩm trực tiếp từ Haravan API hoặc dùng `data/products.csv` làm nguồn dự phòng. AI hoạt động theo kiến trúc:
 
 ```text
 AI lần 1 nhận dạng câu hỏi
@@ -14,7 +14,7 @@ AI lần 1 nhận dạng câu hỏi
 - Lọc theo thương hiệu, loại sản phẩm, màu, size, khoảng giá và tình trạng còn hàng.
 - Hiển thị ảnh, màu, size, **Còn hàng/Hết hàng**, giá bán, giá gốc/khuyến mãi và link `https://www.greenholdingsport.vn`.
 - Tư vấn, so sánh và giải thích sản phẩm bằng AI dựa trên dữ liệu thật.
-- Tạo đơn nháp local, chưa kết nối Haravan hoặc KiotViet.
+- Tạo đơn nháp local, chưa đẩy đơn hàng thật lên Haravan hoặc KiotViet.
 - Khách gõ `admin` để chuyển sang nhân viên.
 - Trang `admin.html` nhận chat trực tiếp, chuyển lại cho AI và quản lý đơn nháp.
 - Không cần cài thư viện npm ngoài.
@@ -34,7 +34,7 @@ AI lần 1 **không được viết SQL, không được truy cập database và
 
 ### Code truy vấn dữ liệu
 
-Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong CSV bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh và link đều lấy từ bảng sản phẩm.
+Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong dữ liệu đã đồng bộ bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh, nhóm sản phẩm và link đều lấy từ Haravan hoặc CSV dự phòng.
 
 ### Lần gọi AI 2 – Trả lời cuối
 
@@ -116,15 +116,38 @@ AI_CACHE_TTL_MS=1800000
 
 `AI_ALWAYS_FINAL=true` là chế độ đã chốt: sau AI Router, hệ thống gọi AI lần 2 để soạn lời đáp. Lệnh `admin` và cuộc chat đang do nhân viên xử lý không gọi AI.
 
-## Cập nhật sản phẩm
+## Kết nối Haravan
 
-Thay file:
+Tạo Private App trong trang quản trị Haravan và cấp các quyền đọc:
 
-```text
-data/products.csv
+- `com.read_products`: sản phẩm, biến thể, nhóm sản phẩm.
+- `com.read_inventories`: tồn kho theo địa điểm.
+- `com.read_shop`: danh sách địa điểm kho.
+
+Điền các biến sau trong `.env` khi chạy local hoặc phần Environment của Render:
+
+```env
+PRODUCT_SOURCE=haravan
+HARAVAN_API_BASE_URL=https://apis.haravan.com/com
+HARAVAN_ACCESS_TOKEN=TOKEN_PRIVATE_APP
+HARAVAN_SYNC_INTERVAL_MS=600000
+HARAVAN_USE_LOCATION_INVENTORY=true
+HARAVAN_FALLBACK_TO_CSV=true
 ```
 
-bằng CSV mới có cùng cấu trúc, rồi khởi động lại máy chủ.
+Hệ thống tải dữ liệu khi khởi động và tự đồng bộ lại mỗi 10 phút. Chatbot tìm trong bộ nhớ nên không gọi Haravan cho từng tin nhắn. Nếu đồng bộ lỗi, dữ liệu lần gần nhất vẫn được giữ nguyên.
+
+Không ghi `HARAVAN_ACCESS_TOKEN` vào GitHub hoặc file `.env.example`.
+
+## Dùng CSV dự phòng
+
+Nếu chưa dùng Haravan, đặt:
+
+```env
+PRODUCT_SOURCE=csv
+```
+
+Sau đó thay `data/products.csv` bằng CSV mới có cùng cấu trúc và khởi động lại máy chủ.
 
 ## Dữ liệu local
 
