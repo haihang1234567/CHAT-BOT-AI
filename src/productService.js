@@ -97,6 +97,15 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function termInText(text, rawTerm) {
+  const term = normalizeText(rawTerm);
+  if (!term) return false;
+  if (/^[a-z0-9]{1,3}$/.test(term)) {
+    return new RegExp(`(?:^|\\s)${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|\\s)`).test(text);
+  }
+  return text.includes(term);
+}
+
 function parsePriceIntent(rawQuery) {
   const q = normalizeText(rawQuery).replace(/,/g, '.');
   const toMoney = (num, unit) => {
@@ -236,6 +245,13 @@ class ProductService {
     product.hasSale = product.variants.some(
       (variant) => variant.compareAtPrice > variant.price && variant.price > 0
     );
+    product.identityText = normalizeText([
+      product.name,
+      product.brand,
+      product.type,
+      product.tags,
+      product.slug
+    ].join(' '));
     product.searchText = normalizeText([
       product.name,
       product.brand,
@@ -362,6 +378,22 @@ class ProductService {
       : [];
   }
 
+  normalizedNeedGroups(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((group) => ({
+        label: clean(group?.label),
+        terms: this.normalizedList(group?.terms),
+        scope: group?.scope === 'identity' ? 'identity' : 'details'
+      }))
+      .filter((group) => group.terms.length);
+  }
+
+  productMatchesNeedGroup(product, group) {
+    const haystack = group.scope === 'identity' ? product.identityText : product.searchText;
+    return group.terms.some((term) => termInText(haystack, term));
+  }
+
   variantMatchesPlan(variant, filters) {
     if (filters.inStockOnly && !variant.inStock) return false;
 
@@ -410,6 +442,9 @@ class ProductService {
       categories: this.normalizedList(search.categories),
       colors: this.normalizedList(search.colors),
       sizes: this.normalizedList(search.sizes),
+      requirements: this.normalizedNeedGroups(search.requirements),
+      preferences: this.normalizedNeedGroups(search.preferences),
+      excludeTerms: this.normalizedList(search.excludeTerms),
       minPrice: search.minPrice !== null && search.minPrice !== undefined && search.minPrice !== '' && Number.isFinite(Number(search.minPrice))
         ? Number(search.minPrice)
         : null,
@@ -437,7 +472,9 @@ class ProductService {
       ...(search.brands || []),
       ...(search.categories || []),
       ...(search.colors || []),
-      ...(search.sizes || [])
+      ...(search.sizes || []),
+      ...(search.requirements || []).flatMap((group) => group?.terms || []),
+      ...(search.preferences || []).flatMap((group) => group?.terms || [])
     ].join(' '));
     const searchCandidates = textQuery ? this.search(textQuery, 40) : [];
     const candidateIds = new Set(searchCandidates.map((item) => item.id));
@@ -445,7 +482,8 @@ class ProductService {
 
     const hasStructuredFilters = filters.names.length || filters.brands.length || filters.categories.length
       || filters.colors.length || filters.sizes.length || filters.minPrice !== null
-      || filters.maxPrice !== null || filters.inStockOnly;
+      || filters.maxPrice !== null || filters.inStockOnly || filters.requirements.length
+      || filters.excludeTerms.length;
     const pool = candidateIds.size && !hasStructuredFilters
       ? [...candidateIds].map((id) => this.productById.get(id)).filter(Boolean)
       : this.products;
@@ -479,6 +517,9 @@ class ProductService {
         score += 250;
       }
 
+      if (filters.excludeTerms.some((term) => termInText(product.identityText, term))) continue;
+      if (filters.requirements.some((group) => !this.productMatchesNeedGroup(product, group))) continue;
+
       const matchingVariants = product.variants.filter((variant) => this.variantMatchesPlan(variant, filters));
       const hasVariantFilters = filters.colors.length || filters.sizes.length || filters.minPrice !== null
         || filters.maxPrice !== null || filters.inStockOnly;
@@ -487,6 +528,9 @@ class ProductService {
       if (filters.colors.length) score += 120;
       if (filters.sizes.length) score += 120;
       if (filters.minPrice !== null || filters.maxPrice !== null) score += 90;
+      for (const preference of filters.preferences) {
+        if (this.productMatchesNeedGroup(product, preference)) score += 80;
+      }
       if (product.inStock) score += 10;
 
       if (filters.query) {
@@ -513,8 +557,13 @@ class ProductService {
     }
 
     // Nếu AI bóc tách quá chặt làm rỗng kết quả, fallback sang tìm kiếm chữ để chatbot không bị “cụt”.
-    if (!results.length && textQuery) results = this.search(textQuery, safeLimit);
-    if (!results.length && fallbackQuery) results = this.search(fallbackQuery, safeLimit);
+    const hasHardFilters = Boolean(
+      filters.categories.length || filters.colors.length || filters.sizes.length
+      || filters.minPrice !== null || filters.maxPrice !== null || filters.inStockOnly
+      || filters.requirements.length || filters.excludeTerms.length
+    );
+    if (!results.length && !hasHardFilters && textQuery) results = this.search(textQuery, safeLimit);
+    if (!results.length && !hasHardFilters && fallbackQuery) results = this.search(fallbackQuery, safeLimit);
     return results;
   }
 
