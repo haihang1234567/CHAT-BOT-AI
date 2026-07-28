@@ -30,6 +30,15 @@
     claim: document.getElementById('claimButton'),
     release: document.getElementById('releaseButton'),
     messages: document.getElementById('adminMessages'),
+    toggleProductSearch: document.getElementById('toggleProductSearch'),
+    productPanel: document.getElementById('adminProductPanel'),
+    productSearchForm: document.getElementById('adminProductSearchForm'),
+    productSearchInput: document.getElementById('adminProductSearchInput'),
+    productSearchStatus: document.getElementById('adminProductSearchStatus'),
+    productResults: document.getElementById('adminProductResults'),
+    selectedProductCount: document.getElementById('selectedProductCount'),
+    productMessage: document.getElementById('adminProductMessage'),
+    sendSelectedProducts: document.getElementById('sendSelectedProducts'),
     messageForm: document.getElementById('adminMessageForm'),
     messageInput: document.getElementById('adminMessageInput'),
     refreshOrders: document.getElementById('refreshOrders'),
@@ -46,7 +55,10 @@
     loadingSessionId: '',
     filter: 'all',
     events: null,
-    seenMessageIds: new Set()
+    seenMessageIds: new Set(),
+    productResults: [],
+    selectedProductIds: new Set(),
+    productSearchRequest: 0
   };
 
   function create(tag, className, text) {
@@ -64,6 +76,17 @@
 
   function formatMoney(value) {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(value || 0));
+  }
+
+  function productPrice(product) {
+    if (!product.priceMin && !product.priceMax) return 'Liên hệ';
+    if (!product.priceMax || product.priceMin === product.priceMax) return formatMoney(product.priceMin || product.priceMax);
+    return `${formatMoney(product.priceMin)} – ${formatMoney(product.priceMax)}`;
+  }
+
+  function safeImage(image, source) {
+    image.src = /^https?:\/\//i.test(source || '') ? source : PLACEHOLDER_IMAGE;
+    image.onerror = () => { image.src = PLACEHOLDER_IMAGE; };
   }
 
   function formatTime(value) {
@@ -189,6 +212,7 @@
     els.claim.disabled = true;
     els.release.disabled = true;
     els.messageInput.disabled = true;
+    closeProductSearch();
   }
 
   async function openSession(sessionId) {
@@ -237,6 +261,22 @@
     const avatar = create('div', 'avatar', role === 'user' ? '👤' : role === 'admin' ? '🧑‍💼' : 'G');
     const stack = create('div', 'message-stack');
     stack.append(create('div', 'message-meta', `${roleLabel(role)} · ${formatTime(message.createdAt)}`), create('div', 'message-bubble', message.text));
+    const attachedProducts = Array.isArray(message.products) ? message.products : [];
+    const attachedIds = Array.isArray(message.productIds) ? message.productIds : [];
+    if (attachedProducts.length) {
+      const attachments = create('div', 'admin-message-products');
+      for (const product of attachedProducts) {
+        const item = create('div', 'admin-message-product');
+        const image = create('img');
+        image.alt = product.name;
+        safeImage(image, product.images?.[0] || product.variants?.find((variant) => variant.image)?.image);
+        item.append(image, create('span', '', product.name));
+        attachments.appendChild(item);
+      }
+      stack.appendChild(attachments);
+    } else if (attachedIds.length) {
+      stack.appendChild(create('div', 'admin-message-products-summary', `Đã gửi ${attachedIds.length} sản phẩm kèm tin nhắn.`));
+    }
     row.append(avatar, stack);
     els.messages.appendChild(row);
     requestAnimationFrame(() => { els.messages.scrollTop = els.messages.scrollHeight; });
@@ -256,6 +296,7 @@
     els.claim.disabled = state.activeSession.status === 'human';
     els.release.disabled = state.activeSession.status === 'bot';
     els.messageInput.disabled = false;
+    els.toggleProductSearch.disabled = false;
     els.messages.textContent = '';
     state.seenMessageIds = new Set();
     for (const message of state.activeSession.messages || []) appendMessage(message);
@@ -293,6 +334,148 @@
       });
       els.messageInput.value = '';
     } catch (error) { showToast(error.message); }
+  }
+
+  function resetProductSelection() {
+    state.selectedProductIds.clear();
+    updateProductSelection();
+  }
+
+  function updateProductSelection() {
+    const count = state.selectedProductIds.size;
+    els.selectedProductCount.textContent = count ? `Đã chọn ${count}/5 sản phẩm` : 'Chưa chọn sản phẩm';
+    els.sendSelectedProducts.disabled = !state.activeSession || count === 0;
+    els.sendSelectedProducts.textContent = count ? `Gửi ${count} sản phẩm đã chọn` : 'Gửi sản phẩm đã chọn';
+    els.productResults.querySelectorAll('[data-product-id]').forEach((card) => {
+      const selected = state.selectedProductIds.has(card.dataset.productId);
+      card.classList.toggle('selected', selected);
+      const button = card.querySelector('.admin-product-select');
+      if (button) {
+        button.textContent = selected ? 'Đã chọn' : 'Chọn';
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      }
+    });
+  }
+
+  function closeProductSearch() {
+    state.productSearchRequest += 1;
+    setVisible(els.productPanel, false);
+    els.toggleProductSearch?.setAttribute('aria-expanded', 'false');
+    resetProductSelection();
+  }
+
+  function toggleProductSearch() {
+    if (!state.activeSession) return showToast('Hãy chọn một cuộc trò chuyện trước.');
+    const open = els.productPanel.hidden;
+    setVisible(els.productPanel, open, 'grid');
+    els.toggleProductSearch.setAttribute('aria-expanded', String(open));
+    if (open) {
+      els.productSearchInput.focus();
+    } else {
+      resetProductSelection();
+    }
+  }
+
+  function matchedVariant(product) {
+    return (product.variants || []).find((variant) => variant.id === product.matchedVariantId)
+      || (product.variants || []).find((variant) => variant.inStock)
+      || (product.variants || [])[0]
+      || null;
+  }
+
+  function renderProductResults() {
+    els.productResults.textContent = '';
+    if (!state.productResults.length) {
+      els.productResults.appendChild(create('div', 'admin-product-empty', 'Không có sản phẩm phù hợp với từ khóa này.'));
+      updateProductSelection();
+      return;
+    }
+
+    for (const product of state.productResults) {
+      const variant = matchedVariant(product);
+      const card = create('article', 'admin-product-result');
+      card.dataset.productId = product.id;
+
+      const image = create('img');
+      image.alt = product.name;
+      safeImage(image, variant?.image || product.images?.[0]);
+
+      const info = create('div', 'admin-product-result-info');
+      info.append(
+        create('strong', '', product.name),
+        create('span', '', [product.brand, product.type].filter(Boolean).join(' · ') || 'GHS Sport'),
+        create('span', '', `Mã: ${variant?.sku || variant?.id || product.id}`),
+        create('b', '', `${productPrice(product)} · ${product.inStock ? 'Còn hàng' : 'Hết hàng'}`)
+      );
+
+      const select = create('button', 'admin-product-select', 'Chọn');
+      select.type = 'button';
+      select.setAttribute('aria-pressed', 'false');
+      select.addEventListener('click', () => {
+        if (state.selectedProductIds.has(product.id)) {
+          state.selectedProductIds.delete(product.id);
+        } else {
+          if (state.selectedProductIds.size >= 5) return showToast('Mỗi tin nhắn gửi tối đa 5 sản phẩm.');
+          state.selectedProductIds.add(product.id);
+        }
+        updateProductSelection();
+      });
+
+      card.append(image, info, select);
+      els.productResults.appendChild(card);
+    }
+    updateProductSelection();
+  }
+
+  async function searchProducts(query) {
+    const term = String(query || '').trim();
+    if (!term) {
+      state.productResults = [];
+      els.productResults.textContent = '';
+      els.productSearchStatus.textContent = 'Hãy nhập tên, mã sản phẩm, SKU hoặc Barcode.';
+      return;
+    }
+
+    const requestId = ++state.productSearchRequest;
+    els.productSearchStatus.textContent = 'Đang tìm trong kho sản phẩm...';
+    try {
+      const result = await api(`/api/admin/products/search?q=${encodeURIComponent(term)}&limit=12`);
+      if (requestId !== state.productSearchRequest) return;
+      state.productResults = result.products || [];
+      resetProductSelection();
+      els.productSearchStatus.textContent = state.productResults.length
+        ? `Tìm thấy ${state.productResults.length} sản phẩm. Chọn tối đa 5 sản phẩm để gửi.`
+        : 'Không tìm thấy sản phẩm. Hãy thử tên khác hoặc nhập mã/SKU/Barcode.';
+      renderProductResults();
+    } catch (error) {
+      if (requestId !== state.productSearchRequest) return;
+      els.productSearchStatus.textContent = error.message;
+      showToast(error.message);
+    }
+  }
+
+  async function sendProducts() {
+    if (!state.activeSession || !state.selectedProductIds.size) return;
+    const selectedIds = [...state.selectedProductIds];
+    els.sendSelectedProducts.disabled = true;
+    try {
+      await api(`/api/admin/sessions/${encodeURIComponent(state.activeSession.id)}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          message: els.productMessage.value.trim(),
+          adminName: state.adminName,
+          productIds: selectedIds
+        })
+      });
+      resetProductSelection();
+      setVisible(els.productPanel, false);
+      els.toggleProductSearch.setAttribute('aria-expanded', 'false');
+      showToast(`Đã gửi ${selectedIds.length} sản phẩm cho khách.`);
+    } catch (error) {
+      showToast(error.message);
+      updateProductSelection();
+    }
   }
 
   async function loadOrders() {
@@ -461,6 +644,12 @@
   els.refreshOrders.addEventListener('click', loadOrders);
   els.claim.addEventListener('click', claimSession);
   els.release.addEventListener('click', releaseSession);
+  els.toggleProductSearch.addEventListener('click', toggleProductSearch);
+  els.productSearchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchProducts(els.productSearchInput.value);
+  });
+  els.sendSelectedProducts.addEventListener('click', sendProducts);
   els.messageForm.addEventListener('submit', (event) => {
     event.preventDefault();
     const text = els.messageInput.value.trim();
