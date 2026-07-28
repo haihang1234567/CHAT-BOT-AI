@@ -15,8 +15,8 @@ if not exist ".env" (
 )
 
 echo.
-echo Chatbot dang chay tai: http://localhost:3000
-echo Trang quan tri:       http://localhost:3000/admin.html
+echo Chatbot dang chay tai: http://localhost:3100
+echo Trang quan tri:       http://localhost:3100/admin.html
 echo Nhan Ctrl+C de dung.
 echo.
 node server.js
