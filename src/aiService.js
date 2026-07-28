@@ -173,7 +173,11 @@ class AiService {
       .map((item) => ({
         role: item.role === 'user' ? 'user' : 'assistant',
         text: cleanString(item.text, maxChars),
-        productIds: Array.isArray(item.productIds) ? item.productIds.map(String).slice(0, 5) : []
+        productIds: Array.isArray(item.contextProductIds)
+          ? item.contextProductIds.map(String).slice(0, 5)
+          : Array.isArray(item.productIds)
+            ? item.productIds.map(String).slice(0, 5)
+            : []
       }));
   }
 
@@ -214,11 +218,14 @@ class AiService {
       'Ví dụ sân 11 cỏ tự nhiên: requirements có nhóm FG/SG/cỏ tự nhiên và loại TF/AS/IC.',
       'Ví dụ chạy địa hình phải ưu tiên hoặc yêu cầu trail/địa hình; không trộn giày chạy đường bằng nếu khách nói rõ địa hình.',
       'Nếu yêu cầu còn mơ hồ và có thể dẫn tới chọn sai loại sản phẩm, đặt responseMode=clarify và viết clarificationQuestion.',
+      'showProducts=true chỉ khi khách muốn tìm, xem, gợi ý, so sánh, chọn hoặc mua sản phẩm.',
+      'showProducts=false với câu hỏi chỉ cần giải đáp bằng chữ như quy đổi chiều dài bàn chân sang size, cách chọn size, cách bảo quản, giải thích công nghệ hoặc hỏi kiến thức.',
+      'Dù showProducts=false, vẫn có thể đặt needDatabase=true để dùng dữ liệu sản phẩm làm ngữ cảnh trả lời.',
       'needDatabase=true khi cần sản phẩm, mã, giá, màu, size, tồn kho, ảnh, link, mô tả, tư vấn, so sánh hoặc đặt hàng.',
       'needFinalAi=true để AI thứ hai soạn câu trả lời. Chỉ false cho tác vụ hệ thống không cần lời đáp AI.',
       'Không thêm trường ngoài schema.',
       'Trả đúng một JSON, không markdown:',
-      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needFinalAi":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
+      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needFinalAi":true,"showProducts":false,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
     ].join('\n');
   }
 
@@ -304,6 +311,24 @@ class AiService {
       }
     }
     return { minPrice, maxPrice };
+  }
+
+  codeShowProducts(message) {
+    const q = normalizeText(message);
+    const textOnly = [
+      /\b(chieu dai ban chan|do dai ban chan|ban chan .{0,20}\d+(?:\.\d+)?\s*cm)\b/,
+      /\b(\d+(?:\.\d+)?\s*cm .{0,30}(size|co nao|doi nao)|size nao|chon size|quy doi size)\b/,
+      /\b(cach bao quan|cach ve sinh|giat giay|la gi|tai sao|khac nhau giua|huong dan su dung)\b/
+    ].some((pattern) => pattern.test(q));
+    if (textOnly) return false;
+
+    const explicitlyWantsProducts = [
+      /\b(tim|goi y|cho xem|xem cac mau|co mau nao|co doi nao|co san pham nao)\b/,
+      /\b(mua|chon giup|them vao don|dat hang)\b/,
+      /\b(so sanh) .{0,50}\b(mau|doi|san pham)\b/
+    ].some((pattern) => pattern.test(q));
+    if (explicitlyWantsProducts) return true;
+    return null;
   }
 
   codeSearchRules(message) {
@@ -424,6 +449,7 @@ class AiService {
 
   mergeCodeRules(route, message) {
     const rules = this.codeSearchRules(message);
+    const codeShowProducts = this.codeShowProducts(message);
     const search = route.search || {};
     const knownSurface = rules.requirements.some((group) => group.scope === 'identity');
     const surfaceTerms = new Set([
@@ -442,6 +468,7 @@ class AiService {
 
     return {
       ...route,
+      showProducts: codeShowProducts === null ? route.showProducts : codeShowProducts,
       search: {
         ...search,
         brands: uniqueStrings([...(rules.brands || []), ...(search.brands || [])]),
@@ -510,6 +537,10 @@ class AiService {
       intent,
       needDatabase,
       needFinalAi: true,
+      showProducts: this.codeShowProducts(message) ?? [
+        'search_by_code', 'search_product', 'product_recommendation',
+        'compare_products', 'create_order'
+      ].includes(intent),
       needsAdmin,
       responseMode,
       clarificationQuestion: '',
@@ -542,6 +573,23 @@ class AiService {
   fallbackFinal(message, route, candidates = [], warning = '') {
     const productIds = candidates.slice(0, 5).map((item) => String(item.id));
     let reply;
+
+    if (route?.showProducts === false) {
+      const q = normalizeText(message);
+      const footLength = q.match(/(\d+(?:\.\d+)?)\s*cm/);
+      if (footLength && /\b(chieu dai ban chan|do dai ban chan|ban chan|size)\b/.test(q)) {
+        reply = `Bàn chân dài ${footLength[1]} cm chưa thể chốt một size chung cho mọi mẫu vì mỗi dòng giày có bảng quy đổi khác nhau. Bạn cho mình biết đúng tên mẫu hoặc mã sản phẩm đang quan tâm, mình sẽ đối chiếu size phù hợp và không cần hiển thị lại danh sách ảnh.`;
+      } else {
+        reply = 'Mình hiểu đây là câu hỏi chỉ cần trả lời bằng thông tin, không cần hiển thị sản phẩm. Hiện AI đang tạm thời chưa kết nối nên mình chưa muốn suy đoán; bạn thử gửi lại sau ít phút hoặc gõ “admin” để được hỗ trợ chính xác.';
+      }
+      return {
+        reply,
+        productIds: [],
+        needsAdmin: false,
+        _source: 'code-final-fallback',
+        _warning: cleanString(warning, 500)
+      };
+    }
 
     if (!candidates.length) {
       reply = 'Mình chưa tìm thấy sản phẩm phù hợp trong dữ liệu hiện tại. Bạn gửi thêm tên, mã sản phẩm, size, màu hoặc mức giá nhé. Cần hỗ trợ trực tiếp, bạn có thể gõ “admin”.';
@@ -576,6 +624,9 @@ class AiService {
       intent,
       needDatabase: raw?.needDatabase === undefined ? needDatabaseByIntent : Boolean(raw.needDatabase),
       needFinalAi: this.config.alwaysFinal ? true : Boolean(raw?.needFinalAi),
+      showProducts: typeof raw?.showProducts === 'boolean'
+        ? raw.showProducts
+        : ['search_by_code', 'search_product', 'product_recommendation', 'compare_products', 'create_order'].includes(intent),
       needsAdmin: Boolean(raw?.needsAdmin) || intent === 'admin_handoff',
       responseMode: ['brief', 'detail', 'recommend', 'compare', 'order', 'clarify'].includes(String(raw?.responseMode))
         ? String(raw.responseMode)
@@ -657,6 +708,7 @@ class AiService {
       'Không gọi một sản phẩm là phù hợp nếu tên, loại, mô tả hoặc biến thể mâu thuẫn với điều kiện bắt buộc của khách.',
       'Nếu không có sản phẩm đáp ứng đủ điều kiện bắt buộc, nói rõ chưa tìm thấy; productIds phải là mảng rỗng. Không chọn sản phẩm gần đúng chỉ để đủ số lượng.',
       'Nếu dữ liệu chưa đủ để xác minh một ưu tiên như form chân, độ êm hoặc trình độ sử dụng, nói rõ chưa thể xác nhận thay vì tự suy đoán.',
+      'Nếu ROUTE.showProducts=false, chỉ trả lời trực tiếp câu hỏi; không liệt kê hàng loạt mẫu, không mời xem thẻ và nên để productIds=[] trừ khi cần giữ đúng một sản phẩm đang được hỏi làm ngữ cảnh.',
       'Tồn kho chỉ nói “Còn hàng” hoặc “Hết hàng”, không nói số lượng.',
       'Ảnh, giá, biến thể và nút xem chi tiết được giao diện dựng từ database; câu trả lời không cần chép lại toàn bộ dữ liệu.',
       'Nếu không có kết quả, nói rõ chưa tìm thấy và hỏi khách bổ sung tên/mã/size/màu/mức giá; có thể gợi ý gõ “admin”.',
