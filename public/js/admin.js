@@ -97,7 +97,7 @@
       if (response.status === 401) {
         sessionStorage.removeItem('ghsAdminToken');
       }
-      throw new Error(data.error || `Lỗi ${response.status}`);
+      throw new Error(data.message || data.error || `Lỗi ${response.status}`);
     }
     return data;
   }
