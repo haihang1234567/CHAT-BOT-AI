@@ -203,6 +203,21 @@ textarea.field-control { resize: vertical; }
 .admin-message-product img { width: 34px; height: 34px; object-fit: contain; border-radius: 6px; background: var(--surface); }
 .admin-message-product span { overflow: hidden; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
 .admin-message-products-summary { margin-top: 6px; color: var(--muted); font-size: 10px; }
+.admin-message-actions { display: flex; margin-top: 6px; }
+.ai-suggest-message-button { min-height: 30px; padding: 5px 9px; border: 1px solid #c9b8ed; border-radius: 9px; color: #5e3a9a; background: #f5f0ff; font-size: 10px; font-weight: 800; }
+.ai-suggest-message-button:hover:not(:disabled) { border-color: #9f82d8; background: #eee5ff; }
+.admin-ai-suggestion-panel { max-height: 55%; overflow-y: auto; gap: 9px; padding: 12px 18px; border-top: 1px solid #ddcff5; background: #fbf9ff; }
+.admin-ai-suggestion-heading { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.admin-ai-suggestion-heading p { margin: 5px 0 0; color: var(--text); font-size: 12px; line-height: 1.4; }
+.admin-ai-suggestion-status { color: #6c578f; font-size: 11px; }
+.admin-ai-suggestion-panel > textarea { width: 100%; min-height: 100px; max-height: 220px; resize: vertical; border: 1px solid #d9ccef; border-radius: 12px; padding: 11px 12px; outline: none; line-height: 1.5; background: var(--surface); }
+.admin-ai-suggestion-panel > textarea:focus { border-color: #9f82d8; box-shadow: 0 0 0 3px rgba(111,72,174,.1); }
+.admin-ai-suggestion-products { display: grid; gap: 7px; color: var(--muted); font-size: 11px; }
+.admin-ai-product-list { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 3px; }
+.admin-ai-product-chip { flex: 0 0 200px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 7px; align-items: center; padding: 6px; border: 1px solid #e1d7f2; border-radius: 10px; background: var(--surface); }
+.admin-ai-product-chip img { width: 40px; height: 40px; object-fit: contain; border-radius: 7px; background: var(--surface-soft); }
+.admin-ai-product-chip span { overflow: hidden; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+.admin-ai-suggestion-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .orders-panel { min-height: calc(100vh - 150px); overflow: hidden; }
 .orders-list { display: grid; gap: 12px; padding: 16px; }
 .order-card { border: 1px solid var(--line); border-radius: 15px; overflow: hidden; background: var(--surface-soft); }
@@ -249,6 +264,8 @@ textarea.field-control { resize: vertical; }
   .admin-product-result { grid-template-columns: 58px minmax(0, 1fr) auto; }
   .admin-product-result > img { width: 58px; height: 54px; }
   .admin-product-send { grid-template-columns: 1fr; }
+  .admin-ai-suggestion-panel { max-height: 62%; padding: 10px; }
+  .admin-ai-suggestion-actions { display: grid; }
   .order-body { grid-template-columns: 1fr; }
   .orders-heading { align-items: center; }
 }

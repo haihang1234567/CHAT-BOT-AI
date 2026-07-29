@@ -39,6 +39,14 @@
     selectedProductCount: document.getElementById('selectedProductCount'),
     productMessage: document.getElementById('adminProductMessage'),
     sendSelectedProducts: document.getElementById('sendSelectedProducts'),
+    aiSuggestionPanel: document.getElementById('adminAiSuggestionPanel'),
+    aiSuggestionQuestion: document.getElementById('adminAiSuggestionQuestion'),
+    aiSuggestionStatus: document.getElementById('adminAiSuggestionStatus'),
+    aiSuggestionText: document.getElementById('adminAiSuggestionText'),
+    aiSuggestionProducts: document.getElementById('adminAiSuggestionProducts'),
+    closeAiSuggestion: document.getElementById('closeAiSuggestion'),
+    useAiSuggestion: document.getElementById('useAiSuggestion'),
+    useAiSuggestionWithProducts: document.getElementById('useAiSuggestionWithProducts'),
     messageForm: document.getElementById('adminMessageForm'),
     messageInput: document.getElementById('adminMessageInput'),
     refreshOrders: document.getElementById('refreshOrders'),
@@ -58,7 +66,9 @@
     seenMessageIds: new Set(),
     productResults: [],
     selectedProductIds: new Set(),
-    productSearchRequest: 0
+    productSearchRequest: 0,
+    aiSuggestionRequest: 0,
+    aiSuggestion: null
   };
 
   function create(tag, className, text) {
@@ -213,6 +223,7 @@
     els.release.disabled = true;
     els.messageInput.disabled = true;
     closeProductSearch();
+    closeAiSuggestion();
   }
 
   async function openSession(sessionId) {
@@ -276,6 +287,15 @@
       stack.appendChild(attachments);
     } else if (attachedIds.length) {
       stack.appendChild(create('div', 'admin-message-products-summary', `Đã gửi ${attachedIds.length} sản phẩm kèm tin nhắn.`));
+    }
+    if (role === 'user' && !message.systemNotice && state.activeSession?.status === 'human') {
+      const actions = create('div', 'admin-message-actions');
+      const suggest = create('button', 'ai-suggest-message-button', '✨ Gợi ý trả lời');
+      suggest.type = 'button';
+      suggest.dataset.messageId = message.id;
+      suggest.addEventListener('click', () => requestAiSuggestion(message));
+      actions.appendChild(suggest);
+      stack.appendChild(actions);
     }
     row.append(avatar, stack);
     els.messages.appendChild(row);
@@ -368,6 +388,7 @@
   function toggleProductSearch() {
     if (!state.activeSession) return showToast('Hãy chọn một cuộc trò chuyện trước.');
     const open = els.productPanel.hidden;
+    if (open) closeAiSuggestion();
     setVisible(els.productPanel, open, 'grid');
     els.toggleProductSearch.setAttribute('aria-expanded', String(open));
     if (open) {
@@ -476,6 +497,111 @@
       showToast(error.message);
       updateProductSelection();
     }
+  }
+
+  function setSuggestionButtonsDisabled(disabled) {
+    document.querySelectorAll('.ai-suggest-message-button').forEach((button) => {
+      button.disabled = disabled;
+    });
+  }
+
+  function closeAiSuggestion() {
+    state.aiSuggestionRequest += 1;
+    state.aiSuggestion = null;
+    setVisible(els.aiSuggestionPanel, false);
+    els.aiSuggestionText.value = '';
+    els.aiSuggestionProducts.textContent = '';
+    els.useAiSuggestion.disabled = true;
+    setVisible(els.useAiSuggestionWithProducts, false);
+    setSuggestionButtonsDisabled(false);
+  }
+
+  function renderAiSuggestion(result) {
+    state.aiSuggestion = result;
+    els.aiSuggestionQuestion.textContent = `Khách hỏi: “${result.question}”`;
+    els.aiSuggestionStatus.textContent = 'Bạn có thể sửa nội dung trước khi gửi. AI chưa gửi gì cho khách.';
+    els.aiSuggestionText.disabled = false;
+    els.aiSuggestionText.value = result.suggestion || '';
+    els.useAiSuggestion.disabled = !els.aiSuggestionText.value.trim();
+    els.aiSuggestionProducts.textContent = '';
+
+    const suggestedProducts = Array.isArray(result.products) ? result.products : [];
+    if (suggestedProducts.length) {
+      els.aiSuggestionProducts.appendChild(create('strong', '', `AI gợi ý kèm ${suggestedProducts.length} sản phẩm:`));
+      const list = create('div', 'admin-ai-product-list');
+      for (const product of suggestedProducts) {
+        const item = create('div', 'admin-ai-product-chip');
+        const image = create('img');
+        image.alt = product.name;
+        safeImage(image, product.images?.[0] || product.variants?.find((variant) => variant.image)?.image);
+        item.append(image, create('span', '', product.name));
+        list.appendChild(item);
+      }
+      els.aiSuggestionProducts.appendChild(list);
+      setVisible(els.useAiSuggestionWithProducts, true);
+    } else {
+      setVisible(els.useAiSuggestionWithProducts, false);
+    }
+    setSuggestionButtonsDisabled(false);
+  }
+
+  async function requestAiSuggestion(message) {
+    if (!state.activeSession) return;
+    const requestId = ++state.aiSuggestionRequest;
+    closeProductSearch();
+    setVisible(els.aiSuggestionPanel, true, 'grid');
+    els.aiSuggestionQuestion.textContent = `Khách hỏi: “${message.text}”`;
+    els.aiSuggestionStatus.textContent = 'AI đang phân tích câu hỏi và dữ liệu liên quan...';
+    els.aiSuggestionText.value = '';
+    els.aiSuggestionText.disabled = true;
+    els.aiSuggestionProducts.textContent = '';
+    els.useAiSuggestion.disabled = true;
+    setVisible(els.useAiSuggestionWithProducts, false);
+    setSuggestionButtonsDisabled(true);
+
+    try {
+      const result = await api(`/api/admin/sessions/${encodeURIComponent(state.activeSession.id)}/ai-suggestion`, {
+        method: 'POST',
+        body: JSON.stringify({ messageId: message.id })
+      });
+      if (requestId !== state.aiSuggestionRequest) return;
+      renderAiSuggestion(result);
+    } catch (error) {
+      if (requestId !== state.aiSuggestionRequest) return;
+      els.aiSuggestionStatus.textContent = error.message;
+      els.aiSuggestionText.value = '';
+      els.aiSuggestionText.disabled = true;
+      setSuggestionButtonsDisabled(false);
+      showToast(error.message);
+    }
+  }
+
+  function useAiSuggestionText() {
+    const text = els.aiSuggestionText.value.trim();
+    if (!text) return;
+    els.messageInput.value = text;
+    els.messageInput.style.height = 'auto';
+    els.messageInput.style.height = `${Math.min(els.messageInput.scrollHeight, 140)}px`;
+    els.messageInput.focus();
+    closeAiSuggestion();
+    showToast('Đã chèn gợi ý. Hãy kiểm tra lại rồi bấm Gửi.');
+  }
+
+  function useAiSuggestionWithProducts() {
+    const products = state.aiSuggestion?.products || [];
+    const text = els.aiSuggestionText.value.trim();
+    if (!products.length) return useAiSuggestionText();
+
+    state.productResults = products;
+    state.selectedProductIds = new Set(products.slice(0, 5).map((product) => product.id));
+    els.productMessage.value = text;
+    renderProductResults();
+    setVisible(els.aiSuggestionPanel, false);
+    setVisible(els.productPanel, true, 'grid');
+    els.toggleProductSearch.setAttribute('aria-expanded', 'true');
+    state.aiSuggestion = null;
+    setSuggestionButtonsDisabled(false);
+    showToast('Đã đưa gợi ý và sản phẩm sang bước duyệt trước khi gửi.');
   }
 
   async function loadOrders() {
@@ -650,6 +776,9 @@
     searchProducts(els.productSearchInput.value);
   });
   els.sendSelectedProducts.addEventListener('click', sendProducts);
+  els.closeAiSuggestion.addEventListener('click', closeAiSuggestion);
+  els.useAiSuggestion.addEventListener('click', useAiSuggestionText);
+  els.useAiSuggestionWithProducts.addEventListener('click', useAiSuggestionWithProducts);
   els.messageForm.addEventListener('submit', (event) => {
     event.preventDefault();
     const text = els.messageInput.value.trim();
