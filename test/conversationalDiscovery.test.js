@@ -162,6 +162,85 @@ test('hội thoại hỏi lần lượt mục đích rồi ngân sách trước 
   assert.equal(finalRoute.search.maxPrice, 1500000);
 });
 
+test('câu trả lời ngân sách ngắn trong hội thoại bắt buộc được Haiku phân tích theo ngữ cảnh', async () => {
+  const { ai } = createServices();
+  Object.assign(ai.config, {
+    baseUrl: 'https://ai.example',
+    token: 'test-token',
+    routerModel: 'test-haiku',
+    chatModel: 'test-haiku',
+    routerMaxTokens: 220,
+    cacheTtlMs: 60000,
+    routerAlways: false
+  });
+
+  const firstRoute = ai.fallbackRoute('giày pickleball');
+  const historyAfterUsageQuestion = [{
+    role: 'assistant',
+    text: firstRoute.clarificationQuestion,
+    route: firstRoute
+  }];
+  const secondRoute = ai.fallbackRoute('trong nhà', historyAfterUsageQuestion);
+  const historyAfterBudgetQuestion = [
+    { role: 'user', text: 'giày pickleball' },
+    ...historyAfterUsageQuestion,
+    { role: 'user', text: 'trong nhà' },
+    {
+      role: 'assistant',
+      text: secondRoute.clarificationQuestion,
+      route: secondRoute
+    }
+  ];
+
+  let routerPrompt = '';
+  let calls = 0;
+  ai.call = async ({ messages }) => {
+    calls += 1;
+    routerPrompt = messages[0].content;
+    return JSON.stringify({
+      intent: 'search_product',
+      needDatabase: true,
+      needWeb: false,
+      showProducts: true,
+      responseMode: 'brief',
+      clarificationQuestion: '',
+      search: {
+        query: 'giày pickleball trong nhà ngân sách 2 triệu',
+        codes: [],
+        productIds: [],
+        names: [],
+        brands: [],
+        categories: ['pickleball'],
+        colors: [],
+        sizes: [],
+        customerNeeds: ['Giày pickleball trong nhà', 'Ngân sách tối đa 2 triệu đồng'],
+        requirements: [
+          { label: 'Loại sản phẩm: Giày', terms: ['giày'], scope: 'identity' },
+          { label: 'Môi trường chơi', terms: ['trong nhà'], scope: 'details' }
+        ],
+        preferences: [],
+        excludeTerms: [],
+        excludeProductIds: [],
+        minPrice: null,
+        maxPrice: 2000000,
+        inStockOnly: false,
+        limit: 5
+      }
+    });
+  };
+
+  const route = await ai.route('2tr', historyAfterBudgetQuestion);
+
+  assert.equal(calls, 1);
+  assert.match(routerPrompt, /"pendingField":"budget"/);
+  assert.match(routerPrompt, /Khoảng ngân sách bạn muốn chọn là bao nhiêu/);
+  assert.equal(route._source, 'ai-router');
+  assert.equal(route.search.maxPrice, 2000000);
+  assert.equal(route.showProducts, true);
+  assert.equal(route.consultation.ready, true);
+  assert.equal(route.clarificationQuestion, '');
+});
+
 test('giày bóng đá bắt buộc hỏi mặt sân trước khi hiện sản phẩm', () => {
   const { ai } = createServices();
   const route = ai.fallbackRoute('tư vấn giày bóng đá dưới 2 triệu');

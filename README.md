@@ -28,6 +28,11 @@ giữ một trạng thái nhu cầu ngắn trong cuộc trò chuyện và hỏi 
 có ảnh hưởng lớn đến lựa chọn, ví dụ bộ môn, mặt sân hoặc mục đích sử dụng và
 ngân sách. Những dữ kiện khách đã nói được giữ lại nên chatbot không hỏi lại.
 
+Khi chatbot đang chờ một thông tin, câu trả lời tiếp theo luôn được Haiku đọc
+cùng câu hỏi gần nhất và trạng thái nhu cầu đã thu thập. Nhờ vậy các cách trả lời
+ngắn như `2tr`, `tầm hai triệu`, `trong nhà` hoặc `chân hơi bè` được hiểu theo
+ngữ cảnh thay vì xử lý bằng bộ từ khóa cố định và lặp lại câu hỏi cũ.
+
 Khi câu hỏi đã đủ điều kiện lọc cơ bản, ví dụ “giày chạy bộ dưới 1,5 triệu”,
 backend trả tối đa 5 sản phẩm ngay. Sản phẩm được hiển thị dạng danh sách gọn phù
 hợp với cửa sổ chat nhỏ. Nút “Xem thêm sản phẩm” giữ nguyên tiêu chí cũ và loại

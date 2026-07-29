@@ -235,6 +235,26 @@ class AiService {
       }));
   }
 
+  conversationState(history = []) {
+    const previous = this.lastProductContext(history);
+    if (!previous?.search) return null;
+
+    const search = previous.search;
+    return {
+      pendingField: cleanString(previous?.consultation?.pendingField, 40),
+      query: cleanString(search.query, 300),
+      brands: cleanList(search.brands, 5, 80),
+      categories: cleanList(search.categories, 5, 100),
+      colors: cleanList(search.colors, 5, 80),
+      sizes: cleanList(search.sizes, 5, 40),
+      customerNeeds: cleanList(search.customerNeeds, 6, 120),
+      requirements: cleanNeedGroups(search.requirements, 5, 5),
+      preferences: cleanNeedGroups(search.preferences, 5, 5),
+      minPrice: cleanPrice(search.minPrice),
+      maxPrice: cleanPrice(search.maxPrice)
+    };
+  }
+
   cacheKey(prefix, payload) {
     return `${prefix}:${crypto.createHash('sha1').update(JSON.stringify(payload)).digest('hex')}`;
   }
@@ -271,7 +291,11 @@ class AiService {
       'Không bắt buộc hỏi mọi thông tin. Nếu khách đã nêu loại sản phẩm, bộ môn và ít nhất một tiêu chí lọc như ngân sách, hãng, size hoặc mục đích thì có thể showProducts=true.',
       'Riêng giày bóng đá phải biết mặt sân trước khi showProducts=true.',
       'Hiểu từ viết tắt và lỗi chính tả dựa trên NORMALIZED_MESSAGE; không tự sửa mã sản phẩm, SKU, Barcode hoặc size.',
-      'Chỉ dùng HISTORY khi khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý”.',
+      'Nếu CONVERSATION_STATE.pendingField có giá trị, MESSAGE là câu trả lời cho câu hỏi đang chờ. Phải hiểu MESSAGE theo câu hỏi gần nhất trong HISTORY, kể cả khi khách chỉ trả lời rất ngắn.',
+      'Ví dụ pendingField=budget thì “2tr”, “2 triệu”, “tầm hai triệu” đều là thông tin ngân sách; đổi thành VND nguyên và không hỏi lại ngân sách.',
+      'Giữ lại các nhu cầu đã có trong CONVERSATION_STATE, bổ sung dữ kiện mới rồi quyết định đã đủ để tìm sản phẩm hay chưa.',
+      'Không lặp lại clarificationQuestion cũ khi MESSAGE đã cung cấp được pendingField. Nếu thật sự chưa hiểu, hãy hỏi lại tự nhiên và nêu ví dụ phù hợp.',
+      'Khi không có pendingField, chỉ dùng HISTORY nếu khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý” hoặc đang tiếp tục nhu cầu trước đó.',
       'Giá đổi thành VND nguyên. Không viết SQL, không bịa dữ liệu và không thêm trường ngoài schema.',
       'JSON_SCHEMA:',
       '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
@@ -427,13 +451,7 @@ class AiService {
     if (['greeting', 'thanks', 'admin_handoff'].includes(route.intent)) return false;
     if (route?.consultation?.mode === 'more') return false;
     if (route?.responseMode === 'clarify' && route?.consultation?.pendingField) {
-      const codeRecognizedSubject = Boolean(
-        (route?.search?.categories || []).length
-        || this.detectedProductKind((route?.search?.requirements || [])
-          .flatMap((group) => group.terms || [])
-          .join(' '))
-      );
-      if (codeRecognizedSubject) return false;
+      return true;
     }
     if (this.productService.exactLookup(message)) return false;
     if ((route.search?.productIds || []).length && /\b(mau|size|gia|con hang|het hang|chi tiet|so sanh)\b/.test(normalizeText(message))) {
@@ -1225,6 +1243,7 @@ class AiService {
       normalizedMessage: cleanString(resolution.query, 1500),
       corrections: resolution.corrections,
       forceAi: Boolean(options.forceAi),
+      conversationState: this.conversationState(history),
       history: compactHistory
     };
     const key = this.cacheKey('router', payload);
