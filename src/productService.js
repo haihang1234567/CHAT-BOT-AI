@@ -516,6 +516,7 @@ class ProductService {
     const search = plan?.search && typeof plan.search === 'object' ? plan.search : plan;
     const filters = {
       query: clean(search.query || fallbackQuery),
+      productIds: unique((search.productIds || []).map(clean)),
       codes: unique([...(search.codes || []), ...(search.productIds || [])].map(clean)),
       names: this.normalizedList(search.names),
       brands: this.normalizedList(search.brands),
@@ -564,9 +565,11 @@ class ProductService {
       || filters.colors.length || filters.sizes.length || filters.minPrice !== null
       || filters.maxPrice !== null || filters.inStockOnly || filters.requirements.length
       || filters.excludeTerms.length;
-    const pool = candidateIds.size && !hasStructuredFilters
-      ? [...candidateIds].map((id) => this.productById.get(id)).filter(Boolean)
-      : this.products;
+    const pool = filters.productIds.length
+      ? [...exactIds].map((id) => this.productById.get(id)).filter(Boolean)
+      : candidateIds.size && !hasStructuredFilters
+        ? [...candidateIds].map((id) => this.productById.get(id)).filter(Boolean)
+        : this.products;
 
     const scored = [];
     for (const product of pool) {

@@ -3,9 +3,9 @@
 Chatbot tư vấn sản phẩm Green Holding Sport có thể đọc sản phẩm trực tiếp từ Haravan API hoặc dùng `data/products.csv` làm nguồn dự phòng. AI hoạt động theo kiến trúc:
 
 ```text
-Code nhận dạng câu hỏi và truy vấn dữ liệu trước
-→ Haiku viết câu trả lời ngắn
-→ Chỉ câu thật sự mơ hồ mới gọi thêm AI Router
+Haiku phân tích nhu cầu thành JSON ngắn
+→ Sản phẩm: code lọc Haravan và dựng thẻ
+→ Kiến thức: kho nội bộ có nguồn → thiếu mới gọi Tavily → Haiku tổng hợp có trích dẫn
 ```
 
 ## Chức năng
@@ -21,26 +21,37 @@ Code nhận dạng câu hỏi và truy vấn dữ liệu trước
 
 ## Cách AI tiết kiệm chi phí hoạt động
 
-### Code Router chạy trước
+### Haiku phân tích câu hỏi
 
-Code tự nhận dạng các yêu cầu phổ biến:
+Router AI đọc câu hỏi và tách thành JSON:
 
-- Bộ môn, mặt sân, loại sản phẩm.
-- Tên, mã, thương hiệu, màu, size và khoảng giá.
-- Câu hỏi kiến thức chỉ cần trả lời bằng text.
-- Câu chào, cảm ơn, chuyển nhân viên và câu cần hỏi lại.
+- Bộ môn, loại hàng, mục đích, mặt sân và đặc điểm người dùng.
+- Tên, mã, thương hiệu, màu, size, ngân sách và tồn kho.
+- Điều kiện bắt buộc, điều kiện ưu tiên và điều cần loại trừ.
+- Câu hỏi kiến thức cần tìm web hoặc câu hỏi còn thiếu dữ kiện cần hỏi lại.
 
-AI Router chỉ được gọi thêm khi câu hỏi quá mơ hồ và code không bóc tách đủ dữ kiện.
+Đầu ra ngắn và có giới hạn token. Câu chào, cảm ơn, chuyển nhân viên và mã sản phẩm chính xác vẫn được code xử lý để tránh gọi AI không cần thiết.
 
 ### Code truy vấn dữ liệu
 
 Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong dữ liệu đã đồng bộ bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh, nhóm sản phẩm và link đều lấy từ Haravan hoặc CSV dự phòng.
 
-### Haiku trả lời cuối
+### Sản phẩm không gọi AI lần hai
 
-Haiku chỉ nhận tối đa 3 sản phẩm đã lọc và viết câu trả lời ngắn. Với câu tư vấn thông thường, toàn bộ luồng chỉ gọi AI một lần. Giao diện tự lấy đầy đủ ảnh, màu, size, SKU, tồn kho và biến thể từ Haravan theo `productId`; những dữ liệu giao diện này không được gửi toàn bộ cho AI.
+Sau khi Haiku phân tích, code lọc sản phẩm theo JSON rồi tự dựng câu trả lời và thẻ. Giao diện lấy đầy đủ ảnh, màu, size, SKU, tồn kho và biến thể từ Haravan theo `productId`; những dữ liệu này không được gửi lại cho AI. Vì vậy câu hỏi sản phẩm thông thường chỉ tốn một lần gọi Haiku.
 
-Với câu hỏi kiến thức, chatbot chỉ trả lời text trong 2–4 câu và hiển thị tối đa 3 nút gợi ý hỏi tiếp. Chỉ khi khách bấm **Xem giải thích chi tiết** hoặc một gợi ý tìm sản phẩm thì hệ thống mới xử lý yêu cầu tiếp theo.
+### Kiến thức phải có nguồn
+
+Chatbot ưu tiên các tài liệu đã kiểm duyệt trong `knowledge/`. Nếu chưa có kết quả
+đủ phù hợp hoặc tài liệu đã hết hạn, Tavily mới tìm tối đa 3 kết quả trong danh
+sách website liên đoàn thể thao và nhà sản xuất chính thức. Mỗi nguồn chỉ đưa tối
+đa một đoạn ngắn vào Haiku. Chatbot trả text kèm liên kết nguồn; nếu không có
+nguồn đủ tin cậy thì báo chưa đủ thông tin thay vì suy đoán. Kết quả tìm kiếm
+được cache 24 giờ.
+
+Thêm kiến thức theo mẫu trong `knowledge/README.md`. Thêm các câu hỏi thực tế cần
+kiểm thử vào `evals/customer-questions.json`, sau đó chạy `npm run eval:validate`.
+File đánh giá không được đưa vào prompt nên không làm tăng token khi khách chat.
 
 Xem chi tiết tại `TWO_STAGE_AI.md`.
 
@@ -80,7 +91,7 @@ Trong cuộc trò chuyện do nhân viên hỗ trợ, mỗi tin nhắn của kh�
 4. Bấm **Chèn vào ô trả lời** để duyệt rồi gửi bằng tay.
 5. Nếu AI tìm được sản phẩm liên quan, có thể chọn **Dùng câu trả lời và sản phẩm** để chuyển sang bước duyệt thẻ sản phẩm.
 
-AI không tự chạy trong trạng thái nhân viên và không tự gửi bản nháp cho khách. Với câu hỏi rõ ràng, mỗi lần bấm chỉ gọi Haiku một lần; AI Router chỉ chạy thêm khi code không phân tích đủ. Các lần bấm lại cùng nội dung có thể dùng cache hiện có.
+AI không tự chạy trong trạng thái nhân viên và không tự gửi bản nháp cho khách. Câu hỏi sản phẩm dùng một lần Haiku; câu hỏi kiến thức tìm nguồn rồi mới tổng hợp. Các lần bấm lại cùng nội dung có thể dùng cache hiện có.
 
 ## Cấu hình API AI
 
@@ -129,7 +140,7 @@ Sau khi sửa `.env`, dừng bằng `Ctrl+C`, chạy lại `start-chatbot.cmd`, 
 
 ```env
 AI_COST_MODE=balanced
-AI_ROUTER_MAX_TOKENS=240
+AI_ROUTER_MAX_TOKENS=220
 AI_FINAL_MAX_TOKENS=320
 AI_MAX_CANDIDATES=3
 AI_MAX_VARIANTS=4
@@ -137,12 +148,28 @@ AI_DESCRIPTION_CHARS=260
 AI_HISTORY_MESSAGES=2
 AI_HISTORY_CHARS=220
 AI_ALWAYS_FINAL=true
+AI_ROUTER_ALWAYS=true
+AI_PRODUCT_FINAL_ENABLED=false
 AI_CACHE_TTL_MS=1800000
 ```
 
-`AI_COST_MODE=balanced` áp trần an toàn ngay cả khi Render còn giữ các giới hạn cũ lớn hơn. `AI_ALWAYS_FINAL=true` vẫn dùng Haiku để viết câu trả lời tự nhiên, nhưng không bắt buộc phải gọi AI Router trước. Lệnh `admin`, câu chào, cảm ơn và cuộc chat đang do nhân viên xử lý không tự gọi AI.
+`AI_ROUTER_ALWAYS=true` yêu cầu Haiku phân tích mọi câu hỏi tự nhiên. `AI_PRODUCT_FINAL_ENABLED=false` giúp câu hỏi sản phẩm không gọi Haiku lần hai. Lệnh `admin`, câu chào, cảm ơn, mã chính xác và cuộc chat đang do nhân viên xử lý không tự gọi AI.
 
 Mỗi request thành công ghi một dòng `[AI_USAGE]` trong Render Logs gồm model, mục đích gọi, input token, output token và kích thước prompt. Có thể dùng các dòng này để đối chiếu trực tiếp với chi phí trên Woku.
+
+## Tra cứu kiến thức chính thống
+
+Tạo API key miễn phí tại `https://app.tavily.com`, sau đó thêm vào `.env` hoặc Render Environment:
+
+```env
+KNOWLEDGE_WEB_ENABLED=true
+TAVILY_API_KEY=KEY_CUA_BAN
+KNOWLEDGE_WEB_MAX_RESULTS=3
+KNOWLEDGE_WEB_CONTENT_CHARS=550
+KNOWLEDGE_WEB_CACHE_TTL_MS=86400000
+```
+
+Danh sách nguồn cho phép nằm trong `KNOWLEDGE_OFFICIAL_DOMAINS`. Không có key hoặc không tìm thấy nguồn trong danh sách này thì chatbot không tự trả lời kiến thức.
 
 ## Kết nối Haravan
 

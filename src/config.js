@@ -18,6 +18,24 @@ const productSource = String(process.env.PRODUCT_SOURCE || (haravanToken ? 'hara
   .trim()
   .toLowerCase();
 const aiCostMode = String(process.env.AI_COST_MODE || 'balanced').trim().toLowerCase();
+const defaultOfficialDomains = [
+  'fifa.com',
+  'theifab.com',
+  'bwfbadminton.com',
+  'fivb.com',
+  'worldathletics.org',
+  'fiba.basketball',
+  'itftennis.com',
+  'ittf.com',
+  'usapickleball.org',
+  'olympics.com',
+  'mizuno.com',
+  'mizunousa.com',
+  'asics.com',
+  'nike.com',
+  'adidas.com',
+  'joma-sport.com'
+];
 
 module.exports = {
   port: Number(process.env.PORT || 3100),
@@ -62,6 +80,26 @@ module.exports = {
     routerHistoryChars: Number(process.env.AI_ROUTER_HISTORY_CHARS || 220),
     cacheTtlMs: Number(process.env.AI_CACHE_TTL_MS || 1800000),
     alwaysFinal: booleanValue(process.env.AI_ALWAYS_FINAL, true),
+    routerAlways: booleanValue(process.env.AI_ROUTER_ALWAYS, true),
+    productFinalEnabled: booleanValue(process.env.AI_PRODUCT_FINAL_ENABLED, false),
     costMode: ['balanced', 'quality'].includes(aiCostMode) ? aiCostMode : 'balanced'
+  },
+  knowledge: {
+    enabled: booleanValue(process.env.KNOWLEDGE_WEB_ENABLED, true),
+    localEnabled: booleanValue(process.env.KNOWLEDGE_LOCAL_ENABLED, true),
+    localDir: resolveProjectPath(process.env.KNOWLEDGE_LOCAL_DIR, './knowledge'),
+    localMaxResults: Math.max(1, Math.min(5, Number(process.env.KNOWLEDGE_LOCAL_MAX_RESULTS || 3))),
+    localMinScore: Math.max(1, Number(process.env.KNOWLEDGE_LOCAL_MIN_SCORE || 2)),
+    localSufficientScore: Math.max(2, Number(process.env.KNOWLEDGE_LOCAL_SUFFICIENT_SCORE || 8)),
+    endpoint: String(process.env.TAVILY_API_URL || 'https://api.tavily.com/search'),
+    apiKey: String(process.env.TAVILY_API_KEY || '').trim(),
+    timeoutMs: Math.max(3000, Number(process.env.KNOWLEDGE_WEB_TIMEOUT_MS || 15000)),
+    maxResults: Math.max(1, Math.min(5, Number(process.env.KNOWLEDGE_WEB_MAX_RESULTS || 3))),
+    contentChars: Math.max(200, Math.min(1000, Number(process.env.KNOWLEDGE_WEB_CONTENT_CHARS || 550))),
+    cacheTtlMs: Math.max(60000, Number(process.env.KNOWLEDGE_WEB_CACHE_TTL_MS || 86400000)),
+    officialDomains: String(process.env.KNOWLEDGE_OFFICIAL_DOMAINS || defaultOfficialDomains.join(','))
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
   }
 };

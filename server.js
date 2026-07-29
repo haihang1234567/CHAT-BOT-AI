@@ -11,6 +11,9 @@ const JsonStore = require('./src/store');
 const { ProductService, normalizeText } = require('./src/productService');
 const HaravanService = require('./src/haravanService');
 const AiService = require('./src/aiService');
+const LocalKnowledgeService = require('./src/localKnowledgeService');
+const WebKnowledgeService = require('./src/webKnowledgeService');
+const KnowledgeService = require('./src/knowledgeService');
 
 const store = new JsonStore(config.storePath);
 const loadCsvAtStart = config.productSource === 'csv'
@@ -20,6 +23,9 @@ const products = new ProductService(config.productCsvPath, config.shopDomain, {
 });
 const haravan = new HaravanService(config.haravan, products);
 const ai = new AiService(config.ai, products);
+const localKnowledge = new LocalKnowledgeService(config.knowledge);
+const webKnowledge = new WebKnowledgeService(config.knowledge);
+const knowledge = new KnowledgeService(config.knowledge, localKnowledge, webKnowledge);
 const publicDir = path.resolve(__dirname, 'public');
 
 const customerStreams = new Map();
@@ -285,16 +291,20 @@ async function handleApi(req, res, url) {
 
     if (!ai.isConfigured()) {
       const route = ai.fallbackRoute(messageText, history, 'AI chưa được cấu hình.');
-      const candidates = route.needDatabase
-        ? products.queryByPlan(route, messageText, route.search.limit)
+      const exact = products.exactLookup(messageText);
+      const candidates = exact
+        ? [products.publicProduct(exact.product, exact.variant)]
         : [];
       const localResult = ai.fallbackFinal(messageText, route, candidates, 'AI chưa được cấu hình.');
       const selectedProducts = productCardsByIds(localResult.productIds, candidates);
       responseData = {
-        reply: localResult.reply || 'AI chưa được cấu hình. Mình đã tìm sản phẩm bằng dữ liệu local.',
-        products: route.showProducts ? selectedProducts : [],
+        reply: exact
+          ? localResult.reply
+          : 'AI phân tích nhu cầu chưa được cấu hình nên mình chưa thể tư vấn chính xác và sẽ không tự đoán sản phẩm. Bạn có thể gửi mã sản phẩm chính xác hoặc gõ “admin”.',
+        products: exact && route.showProducts ? selectedProducts : [],
         contextProductIds: selectedProducts.map((item) => item.id),
         suggestions: localResult.suggestions || [],
+        sources: [],
         needsAdmin: false
       };
       source = 'local-no-ai';
@@ -305,6 +315,7 @@ async function handleApi(req, res, url) {
         routeMeta = {
           intent: route.intent,
           needDatabase: route.needDatabase,
+          needWeb: route.needWeb,
           needFinalAi: route.needFinalAi,
           showProducts: route.showProducts,
           responseMode: route.responseMode
@@ -346,54 +357,81 @@ async function handleApi(req, res, url) {
           });
         }
 
-        // DATABASE chỉ được truy vấn bằng code dựa trên JSON đã kiểm tra từ AI lần 1.
-        const candidates = route.needDatabase
-          ? products.queryByPlan(route, messageText, route.search.limit)
-          : [];
-        databaseCandidates = candidates;
-
-        if (route.needFinalAi) {
-          // LẦN GỌI AI 2: chỉ nhận kết quả database đã rút gọn và soạn câu trả lời cuối.
-          const finalResult = await ai.answer(messageText, route, candidates, history);
-          const selectedProducts = productCardsByIds(finalResult.productIds, candidates);
+        if (route.intent === 'general_question' || route.needWeb) {
+          // Kiến thức: tìm nguồn chính thống trước, sau đó AI chỉ tổng hợp từ các nguồn đã duyệt.
+          const research = await knowledge.search(route.webQuery || messageText, {
+            originalQuestion: messageText
+          });
+          const finalResult = await ai.answerKnowledge(
+            messageText,
+            route,
+            research.sources,
+            history,
+            { purpose: 'knowledge-final' }
+          );
           responseData = {
             reply: finalResult.reply,
-            products: route.showProducts ? selectedProducts : [],
-            contextProductIds: selectedProducts.map((item) => item.id),
+            products: [],
+            contextProductIds: [],
             suggestions: finalResult.suggestions || [],
+            sources: finalResult.sources || [],
             needsAdmin: finalResult.needsAdmin
           };
           source = [
             routeSource(route),
-            route.needDatabase ? 'database-code' : 'no-database',
-            finalResult.cached ? 'ai-final-cache' : 'ai-final'
+            research.provider === 'local'
+              ? 'knowledge-local'
+              : research.cached ? 'web-cache' : 'web-official',
+            finalResult.cached ? 'knowledge-cache' : finalResult._source
           ].join('+');
         } else {
-          const localResult = ai.fallbackFinal(messageText, route, candidates);
-          responseData = {
-            reply: localResult.reply,
-            products: route.showProducts ? productCardsByIds(localResult.productIds, candidates) : [],
-            contextProductIds: localResult.productIds || candidates.map((item) => item.id),
-            suggestions: localResult.suggestions || [],
-            needsAdmin: false
-          };
-          source = `${routeSource(route)}+code-response`;
+          // Sản phẩm: AI chỉ xuất bộ lọc JSON; code truy vấn Haravan và dựng thẻ/biến thể.
+          const candidates = route.needDatabase
+            ? products.queryByPlan(route, messageText, route.search.limit)
+            : [];
+          databaseCandidates = candidates;
+
+          if (route.needFinalAi) {
+          // LẦN GỌI AI 2: chỉ nhận kết quả database đã rút gọn và soạn câu trả lời cuối.
+            const finalResult = await ai.answer(messageText, route, candidates, history);
+            const selectedProducts = productCardsByIds(finalResult.productIds, candidates);
+            responseData = {
+              reply: finalResult.reply,
+              products: route.showProducts ? selectedProducts : [],
+              contextProductIds: selectedProducts.map((item) => item.id),
+              suggestions: finalResult.suggestions || [],
+              sources: [],
+              needsAdmin: finalResult.needsAdmin
+            };
+            source = [
+              routeSource(route),
+              route.needDatabase ? 'database-code' : 'no-database',
+              finalResult.cached ? 'ai-final-cache' : 'ai-final'
+            ].join('+');
+          } else {
+            const localResult = ai.fallbackFinal(messageText, route, candidates);
+            responseData = {
+              reply: localResult.reply,
+              products: route.showProducts ? productCardsByIds(localResult.productIds, candidates) : [],
+              contextProductIds: localResult.productIds || candidates.map((item) => item.id),
+              suggestions: localResult.suggestions || [],
+              sources: [],
+              needsAdmin: false
+            };
+            source = `${routeSource(route)}+haravan-code-response`;
+          }
         }
       } catch (error) {
         console.error('Lỗi luồng AI hai tầng:', error.message);
-        const route = ai.fallbackRoute(messageText, history, error.message);
-        const candidates = route.needDatabase
-          ? products.queryByPlan(route, messageText, route.search.limit)
-          : [];
-        const localResult = ai.fallbackFinal(messageText, route, candidates, error.message);
-        const selectedProducts = databaseCandidates.length
-          ? databaseCandidates
-          : productCardsByIds(localResult.productIds, candidates);
+        const selectedProducts = databaseCandidates;
         responseData = {
-          reply: localResult.reply || 'AI đang tạm thời chưa kết nối. Mình đã thử tìm sản phẩm bằng dữ liệu local; bạn cũng có thể gõ “admin” để gặp nhân viên.',
-          products: route.showProducts ? selectedProducts : [],
+          reply: selectedProducts.length
+            ? 'Mình đã lọc được dữ liệu sản phẩm nhưng chưa tạo được câu trả lời hoàn chỉnh. Bạn xem các thẻ bên dưới hoặc gõ “admin” để nhân viên hỗ trợ.'
+            : 'Mình chưa thể phân tích hoặc kiểm chứng câu hỏi lúc này nên sẽ không tự suy đoán. Bạn thử lại sau hoặc gõ “admin” để nhân viên hỗ trợ.',
+          products: selectedProducts,
           contextProductIds: selectedProducts.map((item) => item.id),
-          suggestions: localResult.suggestions || [],
+          suggestions: [],
+          sources: [],
           needsAdmin: false
         };
         source = databaseCandidates.length ? 'database-after-ai-error' : 'local-after-ai-error';
@@ -406,6 +444,7 @@ async function handleApi(req, res, url) {
       productIds: responseData.products.map((item) => item.id),
       contextProductIds: responseData.contextProductIds || responseData.products.map((item) => item.id),
       suggestions: responseData.suggestions || [],
+      sources: responseData.sources || [],
       route: routeMeta
     });
     emitCustomer(sessionId, 'chat-message', { ...replyMessage, products: responseData.products });
@@ -415,6 +454,7 @@ async function handleApi(req, res, url) {
       reply: responseData.reply,
       products: responseData.products,
       suggestions: responseData.suggestions || [],
+      sources: responseData.sources || [],
       sessionStatus: store.getSession(sessionId).status,
       messageId: replyMessage.id,
       source
@@ -668,12 +708,27 @@ async function handleApi(req, res, url) {
         });
       }
 
-      const candidates = route.needDatabase
-        ? products.queryByPlan(route, customerMessage.text, route.search.limit)
-        : [];
-      const finalResult = route.needFinalAi
-        ? await ai.answer(customerMessage.text, route, candidates, history, { purpose: 'admin-suggestion' })
-        : ai.fallbackFinal(customerMessage.text, route, candidates);
+      let candidates = [];
+      let finalResult;
+      if (route.intent === 'general_question' || route.needWeb) {
+        const research = await knowledge.search(route.webQuery || customerMessage.text, {
+          originalQuestion: customerMessage.text
+        });
+        finalResult = await ai.answerKnowledge(
+          customerMessage.text,
+          route,
+          research.sources,
+          history,
+          { purpose: 'admin-knowledge-suggestion' }
+        );
+      } else {
+        candidates = route.needDatabase
+          ? products.queryByPlan(route, customerMessage.text, route.search.limit)
+          : [];
+        finalResult = route.needFinalAi
+          ? await ai.answer(customerMessage.text, route, candidates, history, { purpose: 'admin-suggestion' })
+          : ai.fallbackFinal(customerMessage.text, route, candidates);
+      }
       if (!finalResult?.reply) throw new Error('AI không tạo được câu trả lời gợi ý.');
 
       return sendJson(res, 200, {
@@ -681,6 +736,7 @@ async function handleApi(req, res, url) {
         question: customerMessage.text,
         suggestion: finalResult.reply,
         products: productCardsByIds(finalResult.productIds, candidates),
+        sources: finalResult.sources || [],
         source: [
           routeSource(route),
           finalResult.cached ? 'ai-final-cache' : 'ai-final'

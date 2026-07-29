@@ -521,11 +521,29 @@
     els.aiSuggestionQuestion.textContent = `Khách hỏi: “${result.question}”`;
     els.aiSuggestionStatus.textContent = 'Bạn có thể sửa nội dung trước khi gửi. AI chưa gửi gì cho khách.';
     els.aiSuggestionText.disabled = false;
-    els.aiSuggestionText.value = result.suggestion || '';
+    const officialSources = (Array.isArray(result.sources) ? result.sources : [])
+      .filter((source) => /^https?:\/\//i.test(String(source?.url || '')))
+      .slice(0, 3);
+    const sourceText = officialSources.length
+      ? `\n\nNguồn chính thống:\n${officialSources.map((source) => `- ${source.title || source.url}: ${source.url}`).join('\n')}`
+      : '';
+    els.aiSuggestionText.value = `${result.suggestion || ''}${sourceText}`;
     els.useAiSuggestion.disabled = !els.aiSuggestionText.value.trim();
     els.aiSuggestionProducts.textContent = '';
 
     const suggestedProducts = Array.isArray(result.products) ? result.products : [];
+    if (officialSources.length) {
+      els.aiSuggestionProducts.appendChild(create('strong', '', 'Nguồn AI đã dùng:'));
+      const sourceList = create('div', 'admin-ai-product-list');
+      for (const source of officialSources) {
+        const link = create('a', 'admin-ai-product-chip', source.title || source.url);
+        link.href = source.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        sourceList.appendChild(link);
+      }
+      els.aiSuggestionProducts.appendChild(sourceList);
+    }
     if (suggestedProducts.length) {
       els.aiSuggestionProducts.appendChild(create('strong', '', `AI gợi ý kèm ${suggestedProducts.length} sản phẩm:`));
       const list = create('div', 'admin-ai-product-list');

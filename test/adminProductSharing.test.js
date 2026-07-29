@@ -122,13 +122,17 @@ test('AI chỉ tạo bản nháp khi Admin bấm gợi ý và không tự gửi 
     req.on('end', () => {
       aiCallCount += 1;
       const reply = {
-        reply: 'Shop có mẫu giày bóng chuyền phù hợp. Bạn cho mình xin size để kiểm tra biến thể nhé.',
-        productIds: [suggestedProductId],
-        suggestions: [{
-          label: 'Kiểm tra màu và size',
-          prompt: 'Kiểm tra màu và size còn hàng của mẫu vừa gợi ý'
-        }],
-        needsAdmin: false
+        intent: 'search_product',
+        needDatabase: true,
+        needWeb: false,
+        showProducts: true,
+        responseMode: 'brief',
+        search: {
+          query: 'giày bóng chuyền',
+          productIds: [suggestedProductId],
+          customerNeeds: ['Tìm sản phẩm khách đang hỏi'],
+          limit: 3
+        }
       };
       const payload = JSON.stringify({
         content: [{ type: 'text', text: JSON.stringify(reply) }]
@@ -219,7 +223,7 @@ test('AI chỉ tạo bản nháp khi Admin bấm gợi ý và không tự gửi 
     assert.equal(suggestionResponse.status, 200);
     const suggestion = await suggestionResponse.json();
     assert.equal(aiCallCount, 1);
-    assert.match(suggestion.suggestion, /giày bóng chuyền phù hợp/i);
+    assert.ok(suggestion.suggestion.length > 20);
     assert.deepEqual(suggestion.products.map((product) => product.id), [suggestedProductId]);
 
     const afterResponse = await fetch(`${baseUrl}/api/sessions/${sessionId}`);
