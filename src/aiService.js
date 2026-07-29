@@ -47,6 +47,23 @@ function uniqueStrings(values) {
   return [...new Set((values || []).map((value) => cleanString(value, 160)).filter(Boolean))];
 }
 
+function cleanSuggestions(value, maxItems = 3) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const suggestions = [];
+  for (const item of value) {
+    const label = cleanString(typeof item === 'string' ? item : item?.label, 70);
+    const prompt = cleanString(typeof item === 'string' ? item : item?.prompt || label, 180);
+    if (!label || !prompt) continue;
+    const key = normalizeText(prompt);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    suggestions.push({ label, prompt });
+    if (suggestions.length >= maxItems) break;
+  }
+  return suggestions;
+}
+
 class AiService {
   constructor(config, productService) {
     this.config = config;
@@ -135,15 +152,17 @@ class AiService {
     }
   }
 
-  async call({ model, maxTokens, temperature = 0.1, system, messages }) {
+  async call({ model, maxTokens, temperature = 0.1, system, messages, purpose = 'unknown' }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const body = this.requestBody({ model, maxTokens, temperature, system, messages });
+    const promptChars = JSON.stringify(body.messages || []).length + String(body.system || '').length;
 
     try {
       const response = await fetch(this.endpoint(), {
         method: 'POST',
         headers: this.headers(),
-        body: JSON.stringify(this.requestBody({ model, maxTokens, temperature, system, messages })),
+        body: JSON.stringify(body),
         signal: controller.signal
       });
 
@@ -158,6 +177,21 @@ class AiService {
 
       const text = this.extractText(data);
       if (!text) throw new Error('API AI không trả về nội dung văn bản.');
+      const usage = data?.usage || {};
+      const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0);
+      const outputTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0);
+      const cacheReadTokens = Number(usage.cache_read_input_tokens ?? usage.cache_read_tokens ?? 0);
+      const cacheWriteTokens = Number(usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? 0);
+      console.log('[AI_USAGE]', JSON.stringify({
+        purpose,
+        model: data?.model || model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        promptChars,
+        responseChars: text.length
+      }));
       return text;
     } finally {
       clearTimeout(timer);
@@ -322,7 +356,7 @@ class AiService {
     const textOnly = [
       /\b(chieu dai ban chan|do dai ban chan|ban chan .{0,20}\d+(?:\.\d+)?\s*cm)\b/,
       /\b(\d+(?:\.\d+)?\s*cm .{0,30}(size|co nao|doi nao)|size nao|chon size|quy doi size)\b/,
-      /\b(cach bao quan|cach ve sinh|giat giay|la gi|tai sao|khac nhau giua|huong dan su dung)\b/
+      /\b(cach bao quan|cach ve sinh|giat giay|la gi|tai sao|khac nhau giua|khac nhau the nao|huong dan su dung)\b/
     ].some((pattern) => pattern.test(q));
     if (textOnly) return false;
 
@@ -334,6 +368,51 @@ class AiService {
     ].some((pattern) => pattern.test(q));
     if (explicitlyWantsProducts) return true;
     return null;
+  }
+
+  isKnowledgeQuestion(message) {
+    const q = normalizeText(message);
+    if (this.codeShowProducts(message) === true) return false;
+    return [
+      /\b(la gi|tai sao|vi sao|khac nhau|giai thich|kien thuc|quy tac|luat choi)\b/,
+      /\b(cach bao quan|cach ve sinh|giat giay|huong dan su dung|chon size|quy doi size)\b/,
+      /\b(co nen|dung duoc khong|phu hop khong|anh huong gi|tac dung gi)\b/,
+      /\b(giai thich chi tiet hon|noi ro hon|phan mo rong|cau tra loi vua roi)\b/
+    ].some((pattern) => pattern.test(q));
+  }
+
+  needsProductKnowledge(message, history = []) {
+    const q = normalizeText(message);
+    const hasContextReference = /\b(mau nay|san pham nay|doi nay|cai nay|mau tren|san pham tren|doi tren|cac mau tren|nhung mau tren|mau vua goi y|cac mau vua goi y|cac san pham vua goi y)\b/.test(q);
+    const hasContextProduct = history.some((item) => (
+      (Array.isArray(item?.contextProductIds) && item.contextProductIds.length)
+      || (Array.isArray(item?.productIds) && item.productIds.length)
+    ));
+    const asksStoredDetails = /\b(cong nghe|chat lieu|thong so|bao hanh|xuat xu|mo ta)\b/.test(q);
+    const looksLikeCode = (String(message || '').match(/\b[A-Za-z0-9][A-Za-z0-9._/-]{4,}\b/g) || [])
+      .some((token) => /[A-Za-z]/.test(token) && /\d/.test(token));
+    return looksLikeCode || asksStoredDetails || (hasContextReference && hasContextProduct);
+  }
+
+  shouldUseAiRouter(message, route) {
+    if (!route) return true;
+    if (['greeting', 'thanks', 'admin_handoff', 'general_question'].includes(route.intent)) return false;
+    if (route.responseMode === 'clarify') return false;
+
+    const search = route.search || {};
+    const hasCodeSignals = [
+      search.codes, search.productIds, search.brands, search.categories,
+      search.colors, search.sizes, search.customerNeeds,
+      search.requirements, search.preferences, search.excludeTerms
+    ].some((value) => Array.isArray(value) && value.length)
+      || search.minPrice !== null
+      || search.maxPrice !== null
+      || Boolean(search.inStockOnly);
+    if (hasCodeSignals) return false;
+
+    const q = canonicalSearchText(message);
+    const hasCommerceWords = /\b(tim|mua|giay|vot|bong|ao|quan|balo|tui|tat|size|mau|gia|san pham)\b/.test(q);
+    return !hasCommerceWords;
   }
 
   codeSearchRules(message) {
@@ -560,10 +639,11 @@ class AiService {
       maxChars: this.config.routerHistoryChars
     });
     const historyIds = [...new Set(compactHistory.flatMap((item) => item.productIds || []))].slice(-5);
-    const contextReference = /\b(mau nay|san pham nay|doi nay|cai nay|mau tren|san pham tren|doi tren)\b/.test(q);
+    const contextReference = /\b(mau nay|san pham nay|doi nay|cai nay|mau tren|san pham tren|doi tren|cac mau tren|nhung mau tren|mau vua goi y|cac mau vua goi y|cac san pham vua goi y)\b/.test(q);
     const codeTokens = String(message || '').match(/\b[A-Za-z0-9][A-Za-z0-9._/-]{4,}\b/g) || [];
     const codes = [...new Set(codeTokens.filter((token) => /[A-Za-z]/.test(token) && /\d/.test(token)))].slice(0, 10);
     const codeRules = this.codeSearchRules(message);
+    const knowledgeQuestion = this.isKnowledgeQuestion(message);
 
     let intent = 'search_product';
     let responseMode = 'brief';
@@ -583,6 +663,10 @@ class AiService {
       intent = 'thanks';
       responseMode = 'brief';
       needDatabase = false;
+    } else if (knowledgeQuestion) {
+      intent = 'general_question';
+      responseMode = /\b(chi tiet|ro hon|mo rong)\b/.test(q) ? 'detail' : 'brief';
+      needDatabase = this.needsProductKnowledge(message, history);
     } else if (/\b(dat hang|mua|len don|chot don|them vao don|them gio hang)\b/.test(q)) {
       intent = 'create_order';
       responseMode = 'order';
@@ -603,8 +687,8 @@ class AiService {
     const raw = {
       intent,
       needDatabase,
-      needFinalAi: true,
-      showProducts: this.codeShowProducts(message) ?? [
+      needFinalAi: !['greeting', 'thanks', 'admin_handoff'].includes(intent),
+      showProducts: knowledgeQuestion ? false : this.codeShowProducts(message) ?? [
         'search_by_code', 'search_product', 'product_recommendation',
         'compare_products', 'create_order'
       ].includes(intent),
@@ -632,14 +716,58 @@ class AiService {
     };
     return {
       ...this.applyCodeClarification(this.normalizeRoute(raw, message), message, codeRules),
-      _source: 'code-router-fallback',
+      _source: 'code-router',
       _warning: cleanString(warning, 500)
     };
+  }
+
+  fallbackSuggestions(message, route, candidates = []) {
+    if (route?.responseMode === 'clarify') return [];
+    if (route?.intent === 'general_question' || route?.showProducts === false) {
+      return cleanSuggestions([
+        { label: 'Xem giải thích chi tiết', prompt: 'Hãy giải thích chi tiết hơn câu trả lời vừa rồi' },
+        { label: 'Tìm sản phẩm phù hợp', prompt: `Tư vấn sản phẩm phù hợp dựa trên câu hỏi: ${cleanString(message, 100)}` },
+        { label: 'Hỏi cách lựa chọn', prompt: 'Hướng dẫn tôi cách lựa chọn phù hợp với nhu cầu của mình' }
+      ]);
+    }
+    if (candidates.length) {
+      return cleanSuggestions([
+        { label: 'Kiểm tra màu và size', prompt: 'Kiểm tra màu và size còn hàng của các mẫu vừa gợi ý' },
+        { label: 'So sánh các mẫu', prompt: 'So sánh ngắn gọn các mẫu sản phẩm vừa gợi ý' },
+        { label: 'Lọc theo ngân sách', prompt: 'Hãy hỏi ngân sách của tôi rồi lọc lại sản phẩm phù hợp' }
+      ]);
+    }
+    return cleanSuggestions([
+      { label: 'Tìm theo bộ môn', prompt: 'Hãy hỏi bộ môn tôi cần rồi tìm sản phẩm phù hợp' },
+      { label: 'Tìm theo ngân sách', prompt: 'Hãy hỏi ngân sách của tôi rồi tìm sản phẩm phù hợp' }
+    ]);
   }
 
   fallbackFinal(message, route, candidates = [], warning = '') {
     const productIds = candidates.slice(0, 5).map((item) => String(item.id));
     let reply;
+
+    if (route?.intent === 'greeting') {
+      return {
+        reply: 'Xin chào! Bạn đang cần tư vấn sản phẩm, size hay kiến thức về bộ môn nào?',
+        productIds: [],
+        suggestions: cleanSuggestions([
+          { label: 'Tư vấn sản phẩm', prompt: 'Tư vấn sản phẩm phù hợp với nhu cầu của tôi' },
+          { label: 'Hướng dẫn chọn size', prompt: 'Hướng dẫn tôi cách chọn size phù hợp' }
+        ]),
+        needsAdmin: false,
+        _source: 'code-final'
+      };
+    }
+    if (route?.intent === 'thanks') {
+      return {
+        reply: 'Rất vui vì đã hỗ trợ được bạn. Khi cần tìm sản phẩm hoặc kiểm tra size, màu và tồn kho, bạn cứ nhắn mình nhé.',
+        productIds: [],
+        suggestions: [],
+        needsAdmin: false,
+        _source: 'code-final'
+      };
+    }
 
     if (route?.showProducts === false) {
       const q = normalizeText(message);
@@ -654,6 +782,7 @@ class AiService {
       return {
         reply,
         productIds: [],
+        suggestions: this.fallbackSuggestions(message, route, candidates),
         needsAdmin: false,
         _source: 'code-final-fallback',
         _warning: cleanString(warning, 500)
@@ -675,6 +804,7 @@ class AiService {
     return {
       reply,
       productIds,
+      suggestions: this.fallbackSuggestions(message, route, candidates),
       needsAdmin: false,
       _source: 'code-final-fallback',
       _warning: cleanString(warning, 500)
@@ -688,11 +818,13 @@ class AiService {
       'search_by_code', 'search_product', 'product_detail',
       'product_recommendation', 'compare_products', 'create_order'
     ].includes(intent);
+    const neverNeedsFinalAi = ['greeting', 'thanks', 'admin_handoff'].includes(intent)
+      || String(raw?.responseMode) === 'clarify';
 
     const normalized = {
       intent,
       needDatabase: raw?.needDatabase === undefined ? needDatabaseByIntent : Boolean(raw.needDatabase),
-      needFinalAi: this.config.alwaysFinal ? true : Boolean(raw?.needFinalAi),
+      needFinalAi: neverNeedsFinalAi ? false : (this.config.alwaysFinal ? true : Boolean(raw?.needFinalAi)),
       showProducts: typeof raw?.showProducts === 'boolean'
         ? raw.showProducts
         : ['search_by_code', 'search_product', 'product_recommendation', 'compare_products', 'create_order'].includes(intent),
@@ -743,13 +875,19 @@ class AiService {
     const key = this.cacheKey('router', payload);
     const cached = this.readCache(key);
     if (cached) return cached;
+    const localRoute = this.fallbackRoute(message, history);
+    if (!this.shouldUseAiRouter(message, localRoute)) {
+      this.writeCache(key, localRoute);
+      return localRoute;
+    }
 
     const text = await this.call({
       model: this.config.routerModel,
       maxTokens: this.config.routerMaxTokens,
       temperature: 0,
       system: '',
-      messages: [{ role: 'user', content: this.buildRouterUserPrompt(payload) }]
+      messages: [{ role: 'user', content: this.buildRouterUserPrompt(payload) }],
+      purpose: 'router'
     });
 
     const parsed = this.parseJson(text);
@@ -771,20 +909,49 @@ class AiService {
   buildFinalSystemPrompt() {
     return [
       'Bạn là nhân viên tư vấn Green Holding Sport, trả lời tự nhiên như người thật.',
-      'Đây là AI lần 2. AI lần 1 đã phân tích ý định; backend đã truy vấn database bằng code.',
-      'Trước khi tư vấn, đối chiếu lại toàn bộ customerNeeds, requirements, preferences, excludeTerms và ngân sách trong ROUTE.',
-      'Chỉ dùng dữ liệu trong DATABASE_RESULTS. Không bịa giá, giá gốc, khuyến mãi, tồn kho, màu, size, mã, ảnh, link, công nghệ hay chính sách.',
+      'Backend đã phân tích câu hỏi và truy vấn dữ liệu bằng code; hãy viết câu trả lời cuối thật ngắn gọn.',
+      'Đối chiếu customerNeeds, requirements, preferences, excludeTerms và ngân sách trong ROUTE.',
+      'Thông tin sản phẩm chỉ được lấy từ DATABASE_RESULTS. Không bịa giá, tồn kho, màu, size, mã, công nghệ hoặc chính sách.',
       'Không gọi một sản phẩm là phù hợp nếu tên, loại, mô tả hoặc biến thể mâu thuẫn với điều kiện bắt buộc của khách.',
-      'Nếu không có sản phẩm đáp ứng đủ điều kiện bắt buộc, nói rõ chưa tìm thấy; productIds phải là mảng rỗng. Không chọn sản phẩm gần đúng chỉ để đủ số lượng.',
-      'Nếu dữ liệu chưa đủ để xác minh một ưu tiên như form chân, độ êm hoặc trình độ sử dụng, nói rõ chưa thể xác nhận thay vì tự suy đoán.',
-      'Nếu ROUTE.showProducts=false, chỉ trả lời trực tiếp câu hỏi; không liệt kê hàng loạt mẫu, không mời xem thẻ và nên để productIds=[] trừ khi cần giữ đúng một sản phẩm đang được hỏi làm ngữ cảnh.',
+      'Không có sản phẩm đáp ứng đủ điều kiện thì nói rõ và để productIds=[]. Không chọn gần đúng để đủ số lượng.',
+      'ROUTE.showProducts=false: chỉ trả lời kiến thức bằng text trong 2-4 câu, không liệt kê sản phẩm, productIds=[].',
+      'ROUTE.responseMode=detail chỉ khi khách chủ động bấm xem chi tiết; khi đó có thể giải thích dài hơn.',
       'Tồn kho chỉ nói “Còn hàng” hoặc “Hết hàng”, không nói số lượng.',
-      'Ảnh, giá, biến thể và nút xem chi tiết được giao diện dựng từ database; câu trả lời không cần chép lại toàn bộ dữ liệu.',
-      'Nếu không có kết quả, nói rõ chưa tìm thấy và hỏi khách bổ sung tên/mã/size/màu/mức giá; có thể gợi ý gõ “admin”.',
-      'Nếu có nhiều lựa chọn, nêu ngắn gọn lý do phù hợp và chọn tối đa 5 productIds có trong DATABASE_RESULTS.',
+      'Ảnh, màu, size, SKU và biến thể do giao diện dựng bằng code; không chép lại toàn bộ vào reply.',
+      'Chọn tối đa 3 productIds có trong DATABASE_RESULTS.',
       'Không được trả productId không tồn tại trong DATABASE_RESULTS.',
-      'Trả đúng JSON, không markdown: {"reply":"...","productIds":["..."],"needsAdmin":false}'
+      'Tạo tối đa 3 suggestions ngắn để khách hỏi tiếp. Với câu kiến thức nên có “Xem giải thích chi tiết” và một gợi ý tìm sản phẩm; với câu sản phẩm nên gợi ý kiểm tra màu/size hoặc so sánh.',
+      'Mỗi suggestion gồm label hiển thị và prompt đầy đủ để gửi lại khi khách bấm.',
+      'Trả đúng JSON, không markdown:',
+      '{"reply":"...","productIds":["..."],"suggestions":[{"label":"...","prompt":"..."}],"needsAdmin":false}'
     ].join('\n');
+  }
+
+  answerLimits(message, route) {
+    const qualityMode = this.config.costMode === 'quality';
+    const q = normalizeText(message);
+    const includeVariants = /\b(size|mau|sku|barcode|ma phien ban|con hang|het hang|gia)\b/.test(q);
+    return {
+      maxProducts: qualityMode
+        ? Math.max(1, Number(this.config.maxCandidates || 5))
+        : Math.min(3, Math.max(1, Number(this.config.maxCandidates || 3))),
+      maxVariants: qualityMode
+        ? Math.max(1, Number(this.config.maxVariants || 10))
+        : Math.min(4, Math.max(1, Number(this.config.maxVariants || 4))),
+      descriptionChars: qualityMode
+        ? Math.max(100, Number(this.config.descriptionChars || 650))
+        : Math.min(260, Math.max(100, Number(this.config.descriptionChars || 260))),
+      historyMessages: qualityMode
+        ? Math.max(1, Number(this.config.historyMessages || 4))
+        : Math.min(2, Math.max(1, Number(this.config.historyMessages || 2))),
+      historyChars: qualityMode
+        ? Math.max(80, Number(this.config.historyChars || 350))
+        : Math.min(220, Math.max(80, Number(this.config.historyChars || 220))),
+      maxTokens: qualityMode
+        ? Math.max(120, Number(this.config.finalMaxTokens || 520))
+        : Math.min(320, Math.max(160, Number(this.config.finalMaxTokens || 320))),
+      includeVariants: Boolean(route?.needDatabase && includeVariants)
+    };
   }
 
   finalCacheKey(message, route, candidates, history) {
@@ -797,32 +964,40 @@ class AiService {
     });
   }
 
-  async answer(message, route, candidates = [], history = []) {
+  async answer(message, route, candidates = [], history = [], options = {}) {
     if (!this.isConfigured()) return null;
 
-    const limitedCandidates = candidates.slice(0, Math.max(1, this.config.maxCandidates || 5));
+    const limits = this.answerLimits(message, route);
+    const limitedCandidates = candidates.slice(0, limits.maxProducts);
     const key = this.finalCacheKey(message, route, limitedCandidates, history);
     const cached = this.readCache(key);
     if (cached) return cached;
 
     const databaseResults = this.productService.compactForAi(limitedCandidates, message, {
-      maxProducts: this.config.maxCandidates,
-      maxVariants: this.config.maxVariants,
-      descriptionChars: this.config.descriptionChars
+      maxProducts: limits.maxProducts,
+      maxVariants: limits.maxVariants,
+      descriptionChars: limits.descriptionChars,
+      includeVariants: limits.includeVariants,
+      maxColors: 8,
+      maxSizes: 14
     });
     const payload = {
       customerMessage: cleanString(message, 1500),
       route,
-      recentHistory: this.compactHistory(history),
+      recentHistory: this.compactHistory(history, {
+        limit: limits.historyMessages,
+        maxChars: limits.historyChars
+      }),
       databaseResults
     };
 
     const text = await this.call({
       model: this.config.chatModel,
-      maxTokens: this.config.finalMaxTokens,
+      maxTokens: limits.maxTokens,
       temperature: 0.2,
       system: '',
-      messages: [{ role: 'user', content: this.buildFinalUserPrompt(payload) }]
+      messages: [{ role: 'user', content: this.buildFinalUserPrompt(payload) }],
+      purpose: options.purpose || 'chat-final'
     });
 
     const parsed = this.parseJson(text);
@@ -835,7 +1010,10 @@ class AiService {
       } else if (text) {
         result = {
           reply: cleanString(text, 3500),
-          productIds: limitedCandidates.slice(0, 5).map((item) => item.id),
+          productIds: route?.showProducts === false
+            ? []
+            : limitedCandidates.slice(0, 3).map((item) => item.id),
+          suggestions: this.fallbackSuggestions(message, route, limitedCandidates),
           needsAdmin: false,
           _source: 'ai-final-text'
         };
@@ -845,13 +1023,18 @@ class AiService {
     } else {
       const allowedIds = new Set(limitedCandidates.map((item) => String(item.id)));
       const productIds = Array.isArray(parsed.productIds)
-        ? parsed.productIds.map(String).filter((id) => allowedIds.has(id)).slice(0, 5)
+        ? parsed.productIds.map(String).filter((id) => allowedIds.has(id)).slice(0, 3)
         : [];
       result = {
         reply: cleanString(parsed.reply, 3500),
-        productIds: Array.isArray(parsed.productIds)
-          ? productIds
-          : limitedCandidates.slice(0, 5).map((item) => item.id),
+        productIds: route?.showProducts === false
+          ? []
+          : Array.isArray(parsed.productIds)
+            ? productIds
+            : limitedCandidates.slice(0, 3).map((item) => item.id),
+        suggestions: cleanSuggestions(parsed.suggestions).length
+          ? cleanSuggestions(parsed.suggestions)
+          : this.fallbackSuggestions(message, route, limitedCandidates),
         needsAdmin: Boolean(parsed.needsAdmin),
         _source: 'ai-final'
       };
@@ -869,12 +1052,14 @@ class AiService {
       };
     }
 
-    const route = await this.route('Xin chào, hãy kiểm tra kết nối hai tầng.', []);
+    const testMessage = 'FG và TF khác nhau thế nào?';
+    const route = await this.route(testMessage, []);
     const final = await this.answer(
-      'Xin chào, hãy kiểm tra kết nối hai tầng.',
+      testMessage,
       { ...route, needDatabase: false },
       [],
-      []
+      [],
+      { purpose: 'connection-test' }
     );
     const fallbackUsed = String(route._source || '').includes('fallback')
       || String(final._source || '').includes('fallback');
@@ -882,7 +1067,7 @@ class AiService {
       ok: true,
       message: fallbackUsed
         ? `API kết nối được nhưng model đang mang persona Claude Code. Chế độ tương thích đã hoạt động: Router=${route._source || 'unknown'}, Final=${final._source || 'unknown'}. Chatbot vẫn chạy và tự fallback bằng code khi AI không trả JSON.`
-        : `Kết nối thành công cả 2 lần gọi AI. Router: ${route.intent}. Final: ${final.reply}`
+        : `Kết nối thành công. Chế độ tiết kiệm dùng Router=${route._source || 'unknown'} và 1 lần AI trả lời: ${final.reply}`
     };
   }
 }
