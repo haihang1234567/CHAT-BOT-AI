@@ -651,11 +651,14 @@ class ProductService {
     const maxProducts = Math.max(1, Number(options.maxProducts || 3));
     const maxVariants = Math.max(1, Number(options.maxVariants || 10));
     const descriptionChars = Math.max(100, Number(options.descriptionChars || 650));
+    const includeVariants = options.includeVariants !== false;
+    const maxColors = Math.max(1, Number(options.maxColors || 8));
+    const maxSizes = Math.max(1, Number(options.maxSizes || 14));
     const query = normalizeText(rawQuery);
     const queryTokens = query.split(' ').filter((token) => token.length > 1);
 
     return products.slice(0, maxProducts).map((product) => {
-      const rankedVariants = product.variants
+      const rankedVariants = includeVariants ? product.variants
         .map((variant, index) => {
           const fields = [variant.id, variant.sku, variant.barcode, variant.color, variant.size]
             .map(normalizeText)
@@ -681,9 +684,9 @@ class ProductService {
           stock: variant.inStock ? 'Còn hàng' : 'Hết hàng',
           price: variant.price,
           originalPrice: variant.compareAtPrice
-        }));
+        })) : [];
 
-      return {
+      const compact = {
         id: product.id,
         name: product.name,
         brand: product.brand,
@@ -693,11 +696,12 @@ class ProductService {
         priceMax: product.priceMax,
         originalPriceMin: product.compareAtMin,
         originalPriceMax: product.compareAtMax,
-        colors: product.colors.slice(0, 20),
-        sizes: product.sizes.slice(0, 30),
-        variants: rankedVariants,
+        colors: product.colors.slice(0, maxColors),
+        sizes: product.sizes.slice(0, maxSizes),
         description: (product.excerpt || product.description).slice(0, descriptionChars)
       };
+      if (includeVariants) compact.variants = rankedVariants;
+      return compact;
     });
   }
 }
