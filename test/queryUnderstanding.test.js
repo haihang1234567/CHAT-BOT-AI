@@ -4,10 +4,11 @@ const assert = require('node:assert/strict');
 const AiService = require('../src/aiService');
 const { ProductService, canonicalSearchText } = require('../src/productService');
 
-function variant(id) {
+function variant(id, size = '') {
   return {
     id,
     sku: `${id}-SKU`,
+    size,
     quantity: 5,
     inStock: true,
     price: 1000000
@@ -39,7 +40,23 @@ function createServices() {
       type: 'Giày Bóng Đá',
       tags: 'bóng đá, sân 7, TF',
       images: [],
-      variants: [variant('football-shoe-v1')]
+      variants: [variant('football-shoe-v1', '4.5')]
+    },
+    {
+      id: 'badminton-shoe',
+      name: 'Giày Cầu Lông Mizuno Wave Claw',
+      type: 'Giày Cầu Lông',
+      tags: 'cầu lông, indoor',
+      images: [],
+      variants: [variant('badminton-shoe-v1', '4.5')]
+    },
+    {
+      id: 'running-shoe',
+      name: 'Giày Chạy Bộ Mizuno Wave Rider',
+      type: 'Giày Chạy Bộ',
+      tags: 'chạy bộ, running',
+      images: [],
+      variants: [variant('running-shoe-v1', '4.5')]
     }
   ]);
 
@@ -127,6 +144,33 @@ test('hiểu cách hỏi tắt “giày sân 7” và loại giày FG sân 11', 
   assert.equal(route.search.requirements.some((group) => /sân 5\/7/i.test(group.label)), true);
   assert.deepEqual(route.search.excludeTerms, ['fg', 'sg']);
   assert.deepEqual(results.map((product) => product.id), ['football-shoe']);
+});
+
+test('mã đế TF tự xác định bóng đá và không trộn giày cầu lông hoặc chạy bộ', () => {
+  const { ai, products } = createServices();
+  const message = 'mizuno TF size 4.5';
+  const route = ai.fallbackRoute(message);
+  const results = products.queryByPlan(route, message, 5);
+
+  assert.deepEqual(route.search.categories, ['bong da']);
+  assert.equal(route.search.requirements.some((group) => (
+    group.scope === 'identity'
+    && group.terms.length === 1
+    && canonicalSearchText(group.terms[0]) === 'tf'
+  )), true);
+  assert.deepEqual(results.map((product) => product.id), ['football-shoe']);
+});
+
+test('không thay giày TF sai size bằng sản phẩm Mizuno môn khác cùng size', () => {
+  const { ai, products } = createServices();
+  const message = 'mizuno TF size 6.0';
+  const route = ai.fallbackRoute(message);
+  const results = products.queryByPlan(route, message, 5);
+  const answer = ai.fallbackFinal(message, route, results);
+
+  assert.deepEqual(results, []);
+  assert.deepEqual(answer.productIds, []);
+  assert.doesNotMatch(answer.reply, /cầu lông|chạy bộ/i);
 });
 
 test('câu hỏi kiến thức chỉ dùng text, không gọi AI Router và có gợi ý hỏi tiếp', () => {
