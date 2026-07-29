@@ -16,7 +16,7 @@ AI lần 1 nhận dạng câu hỏi
 - Tư vấn, so sánh và giải thích sản phẩm bằng AI dựa trên dữ liệu thật.
 - Tạo đơn nháp local, chưa đẩy đơn hàng thật lên Haravan hoặc KiotViet.
 - Khách gõ `admin` để chuyển sang nhân viên.
-- Trang `admin.html` nhận chat trực tiếp, chuyển lại cho AI và quản lý đơn nháp.
+- Trang `admin.html` nhận chat trực tiếp, tìm sản phẩm theo tên/mã/SKU/Barcode, gửi tối đa 5 thẻ sản phẩm cho khách, chuyển lại cho AI và quản lý đơn nháp.
 - Không cần cài thư viện npm ngoài.
 
 ## Cách AI hai tầng hoạt động
@@ -58,6 +58,15 @@ Xem chi tiết tại `TWO_STAGE_AI.md`.
    - Nhân viên: `http://localhost:3100/admin.html`
 
 Mật khẩu admin mặc định của bản test: `123456`.
+
+### Gửi sản phẩm thủ công từ Admin
+
+1. Mở một cuộc trò chuyện và bấm **Nhận hỗ trợ**.
+2. Bấm **Tìm và gửi sản phẩm**.
+3. Tìm theo tên, mã sản phẩm, SKU hoặc Barcode.
+4. Chọn tối đa 5 sản phẩm, sửa lời nhắn nếu cần rồi bấm **Gửi sản phẩm đã chọn**.
+
+Khách đang online sẽ nhận thẻ sản phẩm ngay. Mã sản phẩm được lưu cùng tin nhắn nên khi khách tải lại trang, ảnh, giá, màu, size, tồn kho và nút xem chi tiết vẫn được khôi phục từ dữ liệu hiện tại.
 
 ## Cấu hình API AI
 
