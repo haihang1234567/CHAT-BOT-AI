@@ -21,6 +21,22 @@ Haiku phân tích nhu cầu thành JSON ngắn
 
 ## Cách AI tiết kiệm chi phí hoạt động
 
+### Tư vấn theo hội thoại
+
+Chatbot không còn hiện sản phẩm ngay khi câu hỏi còn quá chung chung. Hệ thống
+giữ một trạng thái nhu cầu ngắn trong cuộc trò chuyện và hỏi lần lượt thông tin
+có ảnh hưởng lớn đến lựa chọn, ví dụ bộ môn, mặt sân hoặc mục đích sử dụng và
+ngân sách. Những dữ kiện khách đã nói được giữ lại nên chatbot không hỏi lại.
+
+Khi câu hỏi đã đủ điều kiện lọc cơ bản, ví dụ “giày chạy bộ dưới 1,5 triệu”,
+backend trả tối đa 5 sản phẩm ngay. Sản phẩm được hiển thị dạng danh sách gọn phù
+hợp với cửa sổ chat nhỏ. Nút “Xem thêm sản phẩm” giữ nguyên tiêu chí cũ và loại
+các sản phẩm đã hiển thị để không lặp kết quả.
+
+Từ viết tắt và lỗi chính tả được chuẩn hóa bằng từ vựng lấy từ danh mục Haravan.
+Mã sản phẩm, SKU, Barcode và size không bị tự sửa. Nếu AI Router lỗi, Router bằng
+code vẫn tiếp tục xử lý các câu hỏi sản phẩm rõ ràng thay vì trả thông báo chung.
+
 ### Haiku phân tích câu hỏi
 
 Router AI đọc câu hỏi và tách thành JSON:
@@ -143,6 +159,7 @@ AI_COST_MODE=balanced
 AI_ROUTER_MAX_TOKENS=220
 AI_FINAL_MAX_TOKENS=320
 AI_MAX_CANDIDATES=3
+CHAT_PRODUCT_PAGE_SIZE=5
 AI_MAX_VARIANTS=4
 AI_DESCRIPTION_CHARS=260
 AI_HISTORY_MESSAGES=2

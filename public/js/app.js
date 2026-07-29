@@ -171,9 +171,55 @@
   }
 
   function renderProductGrid(products) {
-    const grid = create('div', 'product-grid');
-    for (const product of products) grid.appendChild(renderProductCard(product));
-    return grid;
+    const list = create('div', 'product-list');
+    for (const product of products.slice(0, 5)) list.appendChild(renderCompactProduct(product));
+    return list;
+  }
+
+  function renderCompactProduct(product) {
+    const variants = [...(product.variants || [])];
+    const selectedVariant = variants.find((variant) => variant.id === product.matchedVariantId)
+      || variants.find((variant) => variant.inStock)
+      || variants[0]
+      || null;
+    const item = create('article', 'compact-product');
+    const image = create('img', 'compact-product-image');
+    image.alt = product.name;
+    image.loading = 'lazy';
+    safeImage(image, selectedVariant?.image || product.images?.[0] || PLACEHOLDER_IMAGE);
+
+    const info = create('div', 'compact-product-info');
+    info.appendChild(create(
+      'span',
+      'compact-product-meta',
+      [product.brand, product.type].filter(Boolean).join(' · ') || 'GHS SPORT'
+    ));
+    info.appendChild(create('strong', 'compact-product-name', product.name));
+    const price = selectedVariant?.price > 0
+      ? formatMoney(selectedVariant.price)
+      : priceRange(product.priceMin, product.priceMax);
+    const priceNode = create('span', 'compact-product-price', price || 'Liên hệ');
+    const stockNode = create(
+      'span',
+      `compact-product-stock${product.inStock ? '' : ' out'}`,
+      product.inStock ? 'Còn hàng' : 'Hết hàng'
+    );
+    const summary = create('div', 'compact-product-summary');
+    summary.append(priceNode, stockNode);
+    info.appendChild(summary);
+
+    const actions = create('div', 'compact-product-actions');
+    const detail = create('a', '', 'Chi tiết');
+    detail.href = product.url;
+    detail.target = '_blank';
+    detail.rel = 'noopener noreferrer';
+    const variantsButton = create('button', '', 'Màu & size');
+    variantsButton.type = 'button';
+    variantsButton.addEventListener('click', () => openVariantDialog(product, selectedVariant?.id));
+    actions.append(detail, variantsButton);
+    info.appendChild(actions);
+    item.append(image, info);
+    return item;
   }
 
   function renderProductCard(product) {

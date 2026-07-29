@@ -146,6 +146,22 @@ function routeSource(route, suffix = '') {
   return `${base}${route?.cached ? '-cache' : ''}${suffix ? `-${suffix}` : ''}`;
 }
 
+function routeMetadata(route) {
+  if (!route) return null;
+  return {
+    intent: route.intent,
+    needDatabase: route.needDatabase,
+    needWeb: route.needWeb,
+    needFinalAi: route.needFinalAi,
+    showProducts: route.showProducts,
+    responseMode: route.responseMode,
+    clarificationQuestion: route.clarificationQuestion || '',
+    consultation: route.consultation || null,
+    corrections: route.corrections || [],
+    search: route.search || {}
+  };
+}
+
 function fallbackAnswer(message, candidates) {
   const exact = products.exactLookup(message);
   if (exact) {
@@ -291,17 +307,15 @@ async function handleApi(req, res, url) {
 
     if (!ai.isConfigured()) {
       const route = ai.fallbackRoute(messageText, history, 'AI chưa được cấu hình.');
-      const exact = products.exactLookup(messageText);
-      const candidates = exact
-        ? [products.publicProduct(exact.product, exact.variant)]
+      routeMeta = routeMetadata(route);
+      const candidates = route.needDatabase && route.showProducts
+        ? products.queryByPlan(route, messageText, route.search.limit)
         : [];
       const localResult = ai.fallbackFinal(messageText, route, candidates, 'AI chưa được cấu hình.');
       const selectedProducts = productCardsByIds(localResult.productIds, candidates);
       responseData = {
-        reply: exact
-          ? localResult.reply
-          : 'AI phân tích nhu cầu chưa được cấu hình nên mình chưa thể tư vấn chính xác và sẽ không tự đoán sản phẩm. Bạn có thể gửi mã sản phẩm chính xác hoặc gõ “admin”.',
-        products: exact && route.showProducts ? selectedProducts : [],
+        reply: localResult.reply,
+        products: route.showProducts ? selectedProducts : [],
         contextProductIds: selectedProducts.map((item) => item.id),
         suggestions: localResult.suggestions || [],
         sources: [],
@@ -312,14 +326,7 @@ async function handleApi(req, res, url) {
       try {
         // LẦN GỌI AI 1: chỉ nhận dạng ý định và xuất bộ lọc JSON, không được truy cập database.
         const route = await ai.route(messageText, history);
-        routeMeta = {
-          intent: route.intent,
-          needDatabase: route.needDatabase,
-          needWeb: route.needWeb,
-          needFinalAi: route.needFinalAi,
-          showProducts: route.showProducts,
-          responseMode: route.responseMode
-        };
+        routeMeta = routeMetadata(route);
 
         if (route.needsAdmin || route.intent === 'admin_handoff') {
           store.setSessionStatus(sessionId, 'waiting_admin');
@@ -695,7 +702,7 @@ async function handleApi(req, res, url) {
     const history = session.messages.slice(0, messageIndex);
 
     try {
-      const route = await ai.route(customerMessage.text, history);
+      const route = await ai.route(customerMessage.text, history, { forceAi: true });
       if (!route) throw new Error('AI Router không trả về kế hoạch tư vấn.');
 
       if (route.responseMode === 'clarify' && route.clarificationQuestion) {

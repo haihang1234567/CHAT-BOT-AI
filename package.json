@@ -1,6 +1,6 @@
 {
   "name": "ghs-local-chatbot",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Chatbot Green Holding Sport với AI hai tầng: AI định tuyến, code truy vấn dữ liệu, AI trả lời cuối",
   "main": "server.js",
