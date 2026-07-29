@@ -1071,6 +1071,7 @@ class AiService {
         id: Number(source.id || index + 1),
         title: cleanString(source.title, 160),
         url: cleanString(source.url, 600),
+        domain: cleanString(source.domain, 160),
         content: cleanString(source.content, 650)
       }))
       .filter((source) => source.url && source.content);

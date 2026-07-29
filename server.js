@@ -11,7 +11,9 @@ const JsonStore = require('./src/store');
 const { ProductService, normalizeText } = require('./src/productService');
 const HaravanService = require('./src/haravanService');
 const AiService = require('./src/aiService');
+const LocalKnowledgeService = require('./src/localKnowledgeService');
 const WebKnowledgeService = require('./src/webKnowledgeService');
+const KnowledgeService = require('./src/knowledgeService');
 
 const store = new JsonStore(config.storePath);
 const loadCsvAtStart = config.productSource === 'csv'
@@ -21,7 +23,9 @@ const products = new ProductService(config.productCsvPath, config.shopDomain, {
 });
 const haravan = new HaravanService(config.haravan, products);
 const ai = new AiService(config.ai, products);
+const localKnowledge = new LocalKnowledgeService(config.knowledge);
 const webKnowledge = new WebKnowledgeService(config.knowledge);
+const knowledge = new KnowledgeService(config.knowledge, localKnowledge, webKnowledge);
 const publicDir = path.resolve(__dirname, 'public');
 
 const customerStreams = new Map();
@@ -355,7 +359,9 @@ async function handleApi(req, res, url) {
 
         if (route.intent === 'general_question' || route.needWeb) {
           // Kiến thức: tìm nguồn chính thống trước, sau đó AI chỉ tổng hợp từ các nguồn đã duyệt.
-          const research = await webKnowledge.search(route.webQuery || messageText);
+          const research = await knowledge.search(route.webQuery || messageText, {
+            originalQuestion: messageText
+          });
           const finalResult = await ai.answerKnowledge(
             messageText,
             route,
@@ -373,7 +379,9 @@ async function handleApi(req, res, url) {
           };
           source = [
             routeSource(route),
-            research.cached ? 'web-cache' : 'web-official',
+            research.provider === 'local'
+              ? 'knowledge-local'
+              : research.cached ? 'web-cache' : 'web-official',
             finalResult.cached ? 'knowledge-cache' : finalResult._source
           ].join('+');
         } else {
@@ -703,7 +711,9 @@ async function handleApi(req, res, url) {
       let candidates = [];
       let finalResult;
       if (route.intent === 'general_question' || route.needWeb) {
-        const research = await webKnowledge.search(route.webQuery || customerMessage.text);
+        const research = await knowledge.search(route.webQuery || customerMessage.text, {
+          originalQuestion: customerMessage.text
+        });
         finalResult = await ai.answerKnowledge(
           customerMessage.text,
           route,

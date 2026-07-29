@@ -86,6 +86,11 @@ module.exports = {
   },
   knowledge: {
     enabled: booleanValue(process.env.KNOWLEDGE_WEB_ENABLED, true),
+    localEnabled: booleanValue(process.env.KNOWLEDGE_LOCAL_ENABLED, true),
+    localDir: resolveProjectPath(process.env.KNOWLEDGE_LOCAL_DIR, './knowledge'),
+    localMaxResults: Math.max(1, Math.min(5, Number(process.env.KNOWLEDGE_LOCAL_MAX_RESULTS || 3))),
+    localMinScore: Math.max(1, Number(process.env.KNOWLEDGE_LOCAL_MIN_SCORE || 2)),
+    localSufficientScore: Math.max(2, Number(process.env.KNOWLEDGE_LOCAL_SUFFICIENT_SCORE || 8)),
     endpoint: String(process.env.TAVILY_API_URL || 'https://api.tavily.com/search'),
     apiKey: String(process.env.TAVILY_API_KEY || '').trim(),
     timeoutMs: Math.max(3000, Number(process.env.KNOWLEDGE_WEB_TIMEOUT_MS || 15000)),

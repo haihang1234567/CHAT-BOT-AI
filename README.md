@@ -5,7 +5,7 @@ Chatbot tư vấn sản phẩm Green Holding Sport có thể đọc sản phẩm
 ```text
 Haiku phân tích nhu cầu thành JSON ngắn
 → Sản phẩm: code lọc Haravan và dựng thẻ
-→ Kiến thức: Tavily tìm nguồn chính thống, Haiku tổng hợp có trích dẫn
+→ Kiến thức: kho nội bộ có nguồn → thiếu mới gọi Tavily → Haiku tổng hợp có trích dẫn
 ```
 
 ## Chức năng
@@ -42,7 +42,16 @@ Sau khi Haiku phân tích, code lọc sản phẩm theo JSON rồi tự dựng c
 
 ### Kiến thức phải có nguồn
 
-Tavily tìm tối đa 3 kết quả trong danh sách website liên đoàn thể thao và nhà sản xuất chính thức. Mỗi nguồn chỉ đưa tối đa một đoạn ngắn vào Haiku. Chatbot trả text kèm liên kết nguồn; nếu không có nguồn đủ tin cậy thì báo chưa đủ thông tin thay vì suy đoán. Kết quả tìm kiếm được cache 24 giờ.
+Chatbot ưu tiên các tài liệu đã kiểm duyệt trong `knowledge/`. Nếu chưa có kết quả
+đủ phù hợp hoặc tài liệu đã hết hạn, Tavily mới tìm tối đa 3 kết quả trong danh
+sách website liên đoàn thể thao và nhà sản xuất chính thức. Mỗi nguồn chỉ đưa tối
+đa một đoạn ngắn vào Haiku. Chatbot trả text kèm liên kết nguồn; nếu không có
+nguồn đủ tin cậy thì báo chưa đủ thông tin thay vì suy đoán. Kết quả tìm kiếm
+được cache 24 giờ.
+
+Thêm kiến thức theo mẫu trong `knowledge/README.md`. Thêm các câu hỏi thực tế cần
+kiểm thử vào `evals/customer-questions.json`, sau đó chạy `npm run eval:validate`.
+File đánh giá không được đưa vào prompt nên không làm tăng token khi khách chat.
 
 Xem chi tiết tại `TWO_STAGE_AI.md`.
 
