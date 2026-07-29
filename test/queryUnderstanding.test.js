@@ -128,3 +128,55 @@ test('hiểu cách hỏi tắt “giày sân 7” và loại giày FG sân 11', 
   assert.deepEqual(route.search.excludeTerms, ['fg', 'sg']);
   assert.deepEqual(results.map((product) => product.id), ['football-shoe']);
 });
+
+test('câu hỏi kiến thức chỉ dùng text, không gọi AI Router và có gợi ý hỏi tiếp', () => {
+  const { ai } = createServices();
+  const message = 'FG và TF khác nhau thế nào?';
+  const route = ai.fallbackRoute(message);
+  const fallback = ai.fallbackFinal(message, route, []);
+
+  assert.equal(route.intent, 'general_question');
+  assert.equal(route.needDatabase, false);
+  assert.equal(route.showProducts, false);
+  assert.equal(ai.shouldUseAiRouter(message, route), false);
+  assert.deepEqual(fallback.productIds, []);
+  assert.ok(fallback.suggestions.some((item) => /chi tiết/i.test(item.label)));
+  assert.ok(fallback.suggestions.some((item) => /sản phẩm/i.test(item.label)));
+});
+
+test('câu sản phẩm rõ nhu cầu dùng code định tuyến và giới hạn payload balanced', () => {
+  const { ai } = createServices();
+  ai.config.costMode = 'balanced';
+  ai.config.maxCandidates = 5;
+  ai.config.maxVariants = 10;
+  ai.config.descriptionChars = 650;
+  ai.config.historyMessages = 4;
+  ai.config.historyChars = 350;
+  ai.config.finalMaxTokens = 520;
+
+  const message = 'giày sân 7 chân bè dưới 2 triệu';
+  const route = ai.fallbackRoute(message);
+  const limits = ai.answerLimits(message, route);
+
+  assert.equal(ai.shouldUseAiRouter(message, route), false);
+  assert.equal(limits.maxProducts, 3);
+  assert.equal(limits.maxVariants, 4);
+  assert.equal(limits.descriptionChars, 260);
+  assert.equal(limits.historyMessages, 2);
+  assert.equal(limits.historyChars, 220);
+  assert.equal(limits.maxTokens, 320);
+  assert.equal(limits.includeVariants, false);
+});
+
+test('nút hỏi tiếp về các mẫu vừa gợi ý giữ đúng productId trong lịch sử', () => {
+  const { ai } = createServices();
+  const route = ai.fallbackRoute('Kiểm tra màu và size còn hàng của các mẫu vừa gợi ý', [{
+    role: 'assistant',
+    text: 'Mình đã chọn được hai mẫu phù hợp.',
+    contextProductIds: ['football-shoe', 'pickle-shoe']
+  }]);
+
+  assert.deepEqual(route.search.productIds, ['football-shoe', 'pickle-shoe']);
+  assert.equal(route.needDatabase, true);
+  assert.equal(ai.shouldUseAiRouter('Kiểm tra màu và size còn hàng của các mẫu vừa gợi ý', route), false);
+});
