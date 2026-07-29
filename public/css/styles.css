@@ -140,11 +140,17 @@ body.customer-page { min-height: 100vh; background: radial-gradient(circle at to
 .cart-summary strong, .checkout-total strong { font-size: 20px; }
 .cart-summary p { color: var(--muted); font-size: 10px; line-height: 1.5; }
 
-.modal-card { width: min(520px, calc(100% - 24px)); max-height: calc(100vh - 30px); padding: 0; border: 0; border-radius: 20px; box-shadow: 0 30px 90px rgba(9,35,27,.3); overflow: auto; }
+.modal-card { width: min(520px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); padding: 0; border: 0; border-radius: 20px; box-shadow: 0 30px 90px rgba(9,35,27,.3); overflow-x: hidden; overflow-y: auto; }
 .modal-card::backdrop { background: rgba(12,28,23,.55); backdrop-filter: blur(3px); }
-.modal-inner { padding-bottom: 20px; }
-.modal-inner > :not(.modal-heading) { margin-left: 20px; margin-right: 20px; }
-.variant-preview { width: calc(100% - 40px); height: 230px; margin-top: 18px; object-fit: contain; border-radius: 14px; background: var(--surface-soft); }
+.modal-inner { min-width: 0; padding-bottom: 20px; overflow-x: hidden; }
+.modal-heading { min-width: 0; }
+.modal-heading > div { min-width: 0; }
+.modal-heading h2 { overflow-wrap: anywhere; }
+.modal-inner > :not(.modal-heading) { max-width: calc(100% - 40px); margin-left: 20px; margin-right: 20px; }
+.modal-inner > .field-control,
+.modal-inner > .full-width,
+.variant-preview { width: calc(100% - 40px); }
+.variant-preview { display: block; height: 230px; margin-top: 18px; object-fit: contain; border-radius: 14px; background: var(--surface-soft); }
 .field-label, .login-card label, .form-grid label { display: grid; gap: 7px; margin-top: 14px; font-size: 12px; font-weight: 750; }
 .field-control { width: 100%; min-height: 43px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; outline: none; background: var(--surface); }
 textarea.field-control { resize: vertical; }
@@ -288,6 +294,13 @@ textarea.field-control { resize: vertical; }
   .admin-ai-suggestion-actions { display: grid; }
   .order-body { grid-template-columns: 1fr; }
   .orders-heading { align-items: center; }
+  .modal-card { width: calc(100vw - 12px); max-width: calc(100vw - 12px); max-height: calc(100dvh - 12px); border-radius: 16px; }
+  .modal-heading { padding: 16px; }
+  .modal-inner > :not(.modal-heading) { max-width: calc(100% - 32px); margin-left: 16px; margin-right: 16px; }
+  .modal-inner > .field-control,
+  .modal-inner > .full-width,
+  .variant-preview { width: calc(100% - 32px); }
+  .variant-preview { height: min(230px, 36dvh); }
 }
 
 /* v1.2.1 - sửa thao tác mở cuộc trò chuyện admin */
