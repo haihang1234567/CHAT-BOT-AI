@@ -47,6 +47,20 @@ function uniqueStrings(values) {
   return [...new Set((values || []).map((value) => cleanString(value, 160)).filter(Boolean))];
 }
 
+function uniqueNeedGroups(groups) {
+  const seen = new Set();
+  return (groups || []).filter((group) => {
+    const key = JSON.stringify({
+      label: normalizeText(group?.label),
+      scope: group?.scope === 'identity' ? 'identity' : 'details',
+      terms: uniqueStrings(group?.terms || []).map(normalizeText).sort()
+    });
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function cleanSuggestions(value, maxItems = 3) {
   if (!Array.isArray(value)) return [];
   const seen = new Set();
@@ -211,7 +225,13 @@ class AiService {
           ? item.contextProductIds.map(String).slice(0, 5)
           : Array.isArray(item.productIds)
             ? item.productIds.map(String).slice(0, 5)
-            : []
+            : [],
+        consultation: item?.route?.consultation
+          ? {
+              pendingField: cleanString(item.route.consultation.pendingField, 40),
+              ready: Boolean(item.route.consultation.ready)
+            }
+          : null
       }));
   }
 
@@ -248,10 +268,13 @@ class AiService {
       'Với câu hỏi kiến thức, đặt intent=general_question, needWeb=true, showProducts=false và viết webQuery ngắn gọn để tìm nguồn chính thống.',
       'Không tự trả lời kiến thức trong bước này. Backend sẽ tìm nguồn rồi mới gọi AI tổng hợp.',
       'Nếu câu hỏi thiếu thông tin có thể làm chọn sai sản phẩm, responseMode=clarify và hỏi đúng một câu.',
+      'Không bắt buộc hỏi mọi thông tin. Nếu khách đã nêu loại sản phẩm, bộ môn và ít nhất một tiêu chí lọc như ngân sách, hãng, size hoặc mục đích thì có thể showProducts=true.',
+      'Riêng giày bóng đá phải biết mặt sân trước khi showProducts=true.',
+      'Hiểu từ viết tắt và lỗi chính tả dựa trên NORMALIZED_MESSAGE; không tự sửa mã sản phẩm, SKU, Barcode hoặc size.',
       'Chỉ dùng HISTORY khi khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý”.',
       'Giá đổi thành VND nguyên. Không viết SQL, không bịa dữ liệu và không thêm trường ngoài schema.',
       'JSON_SCHEMA:',
-      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":3}}'
+      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
     ].join('\n');
   }
 
@@ -328,6 +351,7 @@ class AiService {
       const u = String(unit || '').toLowerCase();
       if (['trieu', 'tr'].includes(u)) return Math.round(value * 1_000_000);
       if (['nghin', 'ngan', 'k'].includes(u)) return Math.round(value * 1_000);
+      if (!u && value >= 100 && value <= 10000) return Math.round(value * 1_000);
       return Math.round(value);
     };
     const pattern = '(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|nghin|ngan|k|dong|d)?';
@@ -401,6 +425,16 @@ class AiService {
   shouldUseAiRouter(message, route) {
     if (!route) return true;
     if (['greeting', 'thanks', 'admin_handoff'].includes(route.intent)) return false;
+    if (route?.consultation?.mode === 'more') return false;
+    if (route?.responseMode === 'clarify' && route?.consultation?.pendingField) {
+      const codeRecognizedSubject = Boolean(
+        (route?.search?.categories || []).length
+        || this.detectedProductKind((route?.search?.requirements || [])
+          .flatMap((group) => group.terms || [])
+          .join(' '))
+      );
+      if (codeRecognizedSubject) return false;
+    }
     if (this.productService.exactLookup(message)) return false;
     if ((route.search?.productIds || []).length && /\b(mau|size|gia|con hang|het hang|chi tiet|so sanh)\b/.test(normalizeText(message))) {
       return false;
@@ -444,8 +478,13 @@ class AiService {
       .filter(([, pattern]) => pattern.test(q))
       .map(([name]) => name)
       .slice(0, 8);
-    const brands = ['mizuno', 'jogarbola', 'promax', 'mitre', 'joma', 'zocker']
-      .filter((brand) => new RegExp(`(?:^|\\s)${brand}(?:$|\\s)`).test(q));
+    const knownBrands = this.productService?.catalogBrands?.() || [
+      'mizuno', 'jogarbola', 'promax', 'mitre', 'joma', 'zocker'
+    ];
+    const brands = knownBrands.filter((brand) => {
+      const escaped = normalizeText(brand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return escaped && new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(q);
+    });
     const colorDictionary = [
       'trang', 'den', 'do', 'xanh', 'vang', 'hong', 'tim', 'cam', 'xam',
       'nau', 'xanh duong', 'xanh la', 'xanh navy', 'trang xanh', 'den trang'
@@ -573,6 +612,264 @@ class AiService {
     return rules.find(([, pattern]) => pattern.test(text))?.[0] || '';
   }
 
+  catalogResolution(message) {
+    if (!this.productService?.normalizeCatalogQuery) {
+      return { query: canonicalSearchText(message), corrections: [], ambiguous: [] };
+    }
+    return this.productService.normalizeCatalogQuery(message);
+  }
+
+  productPageSize() {
+    return Math.max(1, Math.min(5, Number(this.config.chatProductPageSize || 5)));
+  }
+
+  isMoreProductRequest(message) {
+    const q = normalizeText(message);
+    return [
+      /\b(xem|cho xem|tim|co) (?:them )?(?:mau|doi|san pham) khac\b/,
+      /\b(con|co) (?:mau|doi|san pham)? ?(?:nao )?(?:khac|nua)(?: khong)?\b/,
+      /\b(xem them|mau khac|doi khac|san pham khac|khac nua)\b/
+    ].some((pattern) => pattern.test(q));
+  }
+
+  lastProductContext(history = []) {
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      const item = history[index];
+      if (
+        ['assistant', 'admin'].includes(item?.role)
+        && item?.route?.search
+        && item.route.intent !== 'general_question'
+      ) return item.route;
+    }
+    return null;
+  }
+
+  seenProductIds(history = []) {
+    return uniqueStrings(history.flatMap((item) => [
+      ...(Array.isArray(item?.productIds) ? item.productIds : []),
+      ...(Array.isArray(item?.contextProductIds) ? item.contextProductIds : [])
+    ])).slice(-100);
+  }
+
+  mergeSearchState(base = {}, current = {}, message = '') {
+    const groups = (left, right) => [...(left || []), ...(right || [])];
+    return {
+      ...base,
+      ...current,
+      query: cleanString([base.query, message].filter(Boolean).join(' '), 500),
+      codes: uniqueStrings(current.codes || []),
+      productIds: uniqueStrings(current.productIds || []),
+      excludeProductIds: uniqueStrings([
+        ...(base.excludeProductIds || []),
+        ...(current.excludeProductIds || [])
+      ]),
+      names: uniqueStrings(groups(base.names, current.names)),
+      brands: uniqueStrings(groups(base.brands, current.brands)),
+      categories: uniqueStrings(groups(base.categories, current.categories)),
+      colors: uniqueStrings(groups(base.colors, current.colors)),
+      sizes: uniqueStrings(groups(base.sizes, current.sizes)),
+      customerNeeds: uniqueStrings(groups(base.customerNeeds, current.customerNeeds)),
+      requirements: uniqueNeedGroups(groups(base.requirements, current.requirements)),
+      preferences: uniqueNeedGroups(groups(base.preferences, current.preferences)),
+      excludeTerms: uniqueStrings(groups(base.excludeTerms, current.excludeTerms)),
+      minPrice: current.minPrice !== null && current.minPrice !== undefined
+        ? current.minPrice
+        : base.minPrice ?? null,
+      maxPrice: current.maxPrice !== null && current.maxPrice !== undefined
+        ? current.maxPrice
+        : base.maxPrice ?? null,
+      inStockOnly: Boolean(base.inStockOnly || current.inStockOnly),
+      limit: this.productPageSize()
+    };
+  }
+
+  applyConversationContext(route, message, history = []) {
+    const previous = this.lastProductContext(history);
+    if (!previous?.search) return route;
+
+    const more = this.isMoreProductRequest(message);
+    const currentRules = this.codeSearchRules(message);
+    const explicitNewSubject = Boolean(currentRules.categories.length || currentRules.productKind);
+    const pending = previous?.consultation?.pendingField;
+    const continuation = Boolean(pending && !explicitNewSubject);
+    if (!more && !continuation) return route;
+
+    const mergedSearch = this.mergeSearchState(previous.search, route.search, message);
+    if (more) {
+      mergedSearch.query = cleanString(previous.search.query || message, 500);
+      mergedSearch.codes = [];
+      mergedSearch.productIds = [];
+      mergedSearch.excludeProductIds = uniqueStrings([
+        ...(mergedSearch.excludeProductIds || []),
+        ...this.seenProductIds(history)
+      ]);
+    }
+
+    return {
+      ...route,
+      intent: 'search_product',
+      needDatabase: true,
+      needWeb: false,
+      needFinalAi: false,
+      showProducts: more ? true : route.showProducts,
+      responseMode: more ? 'brief' : route.responseMode,
+      clarificationQuestion: '',
+      search: mergedSearch,
+      consultation: more
+        ? { ready: true, mode: 'more', pendingField: '' }
+        : { ...(previous.consultation || {}), ready: false }
+    };
+  }
+
+  consultationQuestion(route, message) {
+    const productIntents = new Set([
+      'search_by_code', 'search_product', 'product_detail',
+      'product_recommendation', 'compare_products', 'create_order'
+    ]);
+    if (!productIntents.has(route?.intent) || route?.consultation?.mode === 'more') return null;
+    if ((route?.search?.codes || []).length || (route?.search?.productIds || []).length) return null;
+
+    const search = route.search || {};
+    const q = canonicalSearchText(search.query || message);
+    const categories = (search.categories || []).map(canonicalSearchText);
+    const kind = this.detectedProductKind([
+      message,
+      ...categories,
+      ...(search.requirements || []).flatMap((group) => group.terms || [])
+    ].join(' '));
+
+    if (!kind) {
+      if (categories.some((category) => category.includes('pickleball'))) {
+        return {
+          pendingField: 'productKind',
+          question: 'Bạn cần giày, vợt, bóng hay phụ kiện pickleball?'
+        };
+      }
+      return {
+        pendingField: 'productKind',
+        question: 'Bạn đang cần loại sản phẩm nào: giày, vợt, quần áo, bóng hay phụ kiện?'
+      };
+    }
+
+    if (!categories.length || categories.every((category) => ['ao', 'quan', 'balo', 'bong'].includes(category))) {
+      return {
+        pendingField: 'sport',
+        question: `Bạn cần ${kind === 'shoe' ? 'giày' : kind === 'racket' ? 'vợt' : 'sản phẩm'} cho bộ môn hoặc mục đích sử dụng nào?`
+      };
+    }
+
+    const football = categories.some((category) => category.includes('bong da'));
+    const hasFootballSurface = (search.requirements || []).some((group) => (
+      /mặt sân|sân 5\/7|sân 11|futsal|cỏ nhân tạo|cỏ tự nhiên/i.test([
+        group.label,
+        ...(group.terms || [])
+      ].join(' '))
+    ));
+    if (kind === 'shoe' && football && !hasFootballSurface) {
+      return {
+        pendingField: 'surface',
+        question: 'Bạn thường đá sân cỏ nhân tạo 5–7 người, sân cỏ tự nhiên 11 người hay sân trong nhà?'
+      };
+    }
+
+    const hasPrice = search.minPrice !== null || search.maxPrice !== null;
+    if (hasPrice) return null;
+    const otherConstraintCount = [
+      (search.brands || []).length > 0,
+      (search.colors || []).length > 0,
+      (search.sizes || []).length > 0,
+      (search.preferences || []).length > 0,
+      (search.requirements || []).some((group) => !/loại sản phẩm/i.test(group.label || '')),
+      /\b(duong nhua|may chay|dia hinh|ngoai troi|trong nha|tap luyen|thi dau)\b/.test(q)
+    ].filter(Boolean).length;
+    if (otherConstraintCount >= 2) return null;
+
+    const running = categories.some((category) => category.includes('chay bo'));
+    if (kind === 'shoe' && running) {
+      if (otherConstraintCount > 0) {
+        return {
+          pendingField: 'budget',
+          question: 'Khoảng ngân sách bạn muốn chọn là bao nhiêu?'
+        };
+      }
+      return {
+        pendingField: 'usage',
+        question: 'Bạn thường chạy đường nhựa, máy chạy hay chạy địa hình?'
+      };
+    }
+    const pickleball = categories.some((category) => category.includes('pickleball'));
+    if (kind === 'shoe' && pickleball) {
+      if (otherConstraintCount > 0) {
+        return {
+          pendingField: 'budget',
+          question: 'Khoảng ngân sách bạn muốn chọn là bao nhiêu?'
+        };
+      }
+      return {
+        pendingField: 'usage',
+        question: 'Bạn thường chơi pickleball trong nhà hay ngoài trời?'
+      };
+    }
+    return {
+      pendingField: 'budget',
+      question: 'Khoảng ngân sách bạn muốn chọn là bao nhiêu?'
+    };
+  }
+
+  applyConsultation(route, message) {
+    if (![
+      'search_by_code', 'search_product', 'product_detail',
+      'product_recommendation', 'compare_products', 'create_order'
+    ].includes(route?.intent)) return route;
+
+    if (route?.responseMode === 'clarify' && route?.clarificationQuestion) {
+      return {
+        ...route,
+        showProducts: false,
+        needFinalAi: false,
+        consultation: {
+          ready: false,
+          pendingField: route?.consultation?.pendingField || 'details'
+        }
+      };
+    }
+    const missing = this.consultationQuestion(route, message);
+    if (!missing) {
+      return {
+        ...route,
+        search: {
+          ...route.search,
+          limit: this.productPageSize()
+        },
+        consultation: { ...(route.consultation || {}), ready: true, pendingField: '' }
+      };
+    }
+    return {
+      ...route,
+      showProducts: false,
+      needFinalAi: false,
+      responseMode: 'clarify',
+      clarificationQuestion: missing.question,
+      consultation: { ready: false, pendingField: missing.pendingField }
+    };
+  }
+
+  finalizeProductRoute(route, message, history = []) {
+    const contextual = this.applyConversationContext(route, message, history);
+    const contextualQuery = contextual?.search?.query || message;
+    const merged = this.mergeCodeRules(contextual, contextualQuery);
+    const resolution = this.catalogResolution(contextualQuery);
+    return this.applyConsultation({
+      ...merged,
+      corrections: resolution.corrections,
+      ambiguities: resolution.ambiguous,
+      search: {
+        ...merged.search,
+        query: resolution.query || merged.search.query
+      }
+    }, message);
+  }
+
   applyCodeClarification(route, message, rules = this.codeSearchRules(message)) {
     const q = canonicalSearchText(message);
     const incompleteProductQuestion = /^(?:co )?(?:giay|vot|ao|quan|balo|ba lo|tui)(?: di| nao| khong)?$/.test(q);
@@ -630,8 +927,8 @@ class AiService {
         colors: uniqueStrings([...(rules.colors || []), ...aiColors]),
         sizes: uniqueStrings([...(rules.sizes || []), ...(search.sizes || [])]),
         customerNeeds: uniqueStrings([...(rules.customerNeeds || []), ...(search.customerNeeds || [])]),
-        requirements: [...rules.requirements, ...aiRequirements],
-        preferences: [...rules.preferences, ...(search.preferences || [])],
+        requirements: uniqueNeedGroups([...rules.requirements, ...aiRequirements]),
+        preferences: uniqueNeedGroups([...rules.preferences, ...(search.preferences || [])]),
         excludeTerms: uniqueStrings([...rules.excludeTerms, ...aiExcludeTerms]),
         minPrice: rules.minPrice !== null ? rules.minPrice : search.minPrice,
         maxPrice: rules.maxPrice !== null ? rules.maxPrice : search.maxPrice,
@@ -641,7 +938,9 @@ class AiService {
   }
 
   fallbackRoute(message, history = [], warning = '') {
-    const q = normalizeText(message);
+    const resolution = this.catalogResolution(message);
+    const analysisMessage = resolution.query || message;
+    const q = normalizeText(analysisMessage);
     const compactHistory = this.compactHistory(history, {
       limit: this.config.routerHistoryMessages,
       maxChars: this.config.routerHistoryChars
@@ -650,8 +949,8 @@ class AiService {
     const contextReference = /\b(mau nay|san pham nay|doi nay|cai nay|mau tren|san pham tren|doi tren|cac mau tren|nhung mau tren|mau vua goi y|cac mau vua goi y|cac san pham vua goi y)\b/.test(q);
     const codeTokens = String(message || '').match(/\b[A-Za-z0-9][A-Za-z0-9._/-]{4,}\b/g) || [];
     const codes = [...new Set(codeTokens.filter((token) => /[A-Za-z]/.test(token) && /\d/.test(token)))].slice(0, 10);
-    const codeRules = this.codeSearchRules(message);
-    const knowledgeQuestion = this.isKnowledgeQuestion(message);
+    const codeRules = this.codeSearchRules(analysisMessage);
+    const knowledgeQuestion = this.isKnowledgeQuestion(analysisMessage);
 
     let intent = 'search_product';
     let responseMode = 'brief';
@@ -704,7 +1003,7 @@ class AiService {
       responseMode,
       clarificationQuestion: '',
       search: {
-        query: String(message || ''),
+        query: String(analysisMessage || ''),
         codes,
         productIds: contextReference ? historyIds : [],
         names: [],
@@ -719,11 +1018,18 @@ class AiService {
         minPrice: codeRules.minPrice,
         maxPrice: codeRules.maxPrice,
         inStockOnly: codeRules.inStockOnly,
-        limit: this.config.maxCandidates || 5
+        limit: this.productPageSize()
       }
     };
+    const normalized = this.applyCodeClarification(
+      this.normalizeRoute(raw, analysisMessage),
+      analysisMessage,
+      codeRules
+    );
     return {
-      ...this.applyCodeClarification(this.normalizeRoute(raw, message), message, codeRules),
+      ...this.finalizeProductRoute(normalized, message, history),
+      corrections: resolution.corrections,
+      ambiguities: resolution.ambiguous,
       _source: 'code-router',
       _warning: cleanString(warning, 500)
     };
@@ -739,11 +1045,30 @@ class AiService {
       ]);
     }
     if (candidates.length) {
-      return cleanSuggestions([
-        { label: 'Kiểm tra màu và size', prompt: 'Kiểm tra màu và size còn hàng của các mẫu vừa gợi ý' },
-        { label: 'So sánh các mẫu', prompt: 'So sánh ngắn gọn các mẫu sản phẩm vừa gợi ý' },
-        { label: 'Lọc theo ngân sách', prompt: 'Hãy hỏi ngân sách của tôi rồi lọc lại sản phẩm phù hợp' }
-      ]);
+      const suggestions = [];
+      if (candidates.length >= 5) {
+        suggestions.push({
+          label: 'Xem thêm sản phẩm',
+          prompt: 'Xem thêm sản phẩm khác cùng tiêu chí'
+        });
+      }
+      if (!(route?.search?.sizes || []).length) {
+        suggestions.push({
+          label: 'Lọc theo size',
+          prompt: 'Hãy hỏi size của tôi rồi lọc lại các sản phẩm còn hàng'
+        });
+      }
+      if (!(route?.search?.brands || []).length) {
+        suggestions.push({
+          label: 'Lọc theo hãng',
+          prompt: 'Hãy hỏi thương hiệu tôi ưu tiên rồi lọc lại sản phẩm'
+        });
+      }
+      suggestions.push({
+        label: 'So sánh các mẫu',
+        prompt: 'So sánh ngắn gọn các mẫu sản phẩm vừa gợi ý'
+      });
+      return cleanSuggestions(suggestions);
     }
     return cleanSuggestions([
       { label: 'Tìm theo bộ môn', prompt: 'Hãy hỏi bộ môn tôi cần rồi tìm sản phẩm phù hợp' },
@@ -753,6 +1078,9 @@ class AiService {
 
   fallbackFinal(message, route, candidates = [], warning = '') {
     const productIds = candidates.slice(0, 5).map((item) => String(item.id));
+    const correctionText = (route?.corrections || []).length
+      ? `Mình hiểu “${route.corrections[0].input}” là “${route.corrections[0].output}”. `
+      : '';
     let reply;
 
     if (route?.intent === 'greeting') {
@@ -800,15 +1128,14 @@ class AiService {
     if (!candidates.length) {
       const analyzedNeeds = cleanList(route?.search?.customerNeeds, 4, 100);
       const needText = analyzedNeeds.length ? ` theo yêu cầu: ${analyzedNeeds.join(', ')}` : '';
-      reply = `Mình chưa tìm thấy sản phẩm đáp ứng đủ${needText} trong kho hiện tại. Mình không thay bằng sản phẩm sai bộ môn hoặc sai điều kiện; bạn có thể đổi một tiêu chí hoặc gõ “admin” để nhân viên kiểm tra thêm.`;
+      reply = route?.consultation?.mode === 'more'
+        ? 'Mình chưa tìm thấy thêm sản phẩm nào đáp ứng nguyên các tiêu chí trước đó. Bạn có muốn mở rộng ngân sách, đổi thương hiệu hoặc bỏ bớt một điều kiện không?'
+        : `Mình chưa tìm thấy sản phẩm đáp ứng đủ${needText} trong kho hiện tại. Mình không thay bằng sản phẩm sai bộ môn hoặc sai điều kiện; bạn có thể đổi một tiêu chí hoặc gõ “admin” để nhân viên kiểm tra thêm.`;
     } else if (candidates.length === 1) {
-      reply = `Mình đã tìm thấy “${candidates[0].name}”. Ảnh, giá, màu, size, tình trạng còn hàng và link chi tiết được hiển thị trong thẻ sản phẩm bên dưới.`;
+      reply = `${correctionText}Mình đã tìm thấy “${candidates[0].name}”. Bạn có thể mở sản phẩm bên dưới để xem màu, size và biến thể.`;
     } else {
-      const names = candidates.slice(0, 3).map((item) => `“${item.name}”`).join(', ');
-      const action = route?.responseMode === 'compare'
-        ? 'Bạn có thể đối chiếu giá, màu, size và tình trạng trên từng thẻ.'
-        : 'Bạn xem các lựa chọn phù hợp ở thẻ bên dưới nhé.';
-      reply = `Mình đã lọc được ${Math.min(candidates.length, 5)} sản phẩm, nổi bật gồm ${names}. ${action}`;
+      const moreText = route?.consultation?.mode === 'more' ? ' tiếp theo' : '';
+      reply = `${correctionText}Mình gửi ${Math.min(candidates.length, 5)} sản phẩm${moreText} đáp ứng các tiêu chí hiện có. Danh sách được hiển thị gọn bên dưới; bạn có thể lọc thêm theo size hoặc thương hiệu.`;
     }
 
     return {
@@ -857,6 +1184,7 @@ class AiService {
         query: cleanString(search.query || message, 500),
         codes: cleanList(search.codes, 10, 100),
         productIds: cleanList(search.productIds, 10, 100),
+        excludeProductIds: cleanList(search.excludeProductIds, 100, 100),
         names: cleanList(search.names, 8, 160),
         brands: cleanList(search.brands, 8, 80),
         categories: cleanList(search.categories, 8, 100),
@@ -884,31 +1212,47 @@ class AiService {
     return normalized;
   }
 
-  async route(message, history = []) {
+  async route(message, history = [], options = {}) {
     if (!this.isConfigured()) return null;
 
+    const resolution = this.catalogResolution(message);
     const compactHistory = this.compactHistory(history, {
       limit: this.config.routerHistoryMessages,
       maxChars: this.config.routerHistoryChars
     });
-    const payload = { message: cleanString(message, 1500), history: compactHistory };
+    const payload = {
+      message: cleanString(message, 1500),
+      normalizedMessage: cleanString(resolution.query, 1500),
+      corrections: resolution.corrections,
+      forceAi: Boolean(options.forceAi),
+      history: compactHistory
+    };
     const key = this.cacheKey('router', payload);
     const cached = this.readCache(key);
     if (cached) return cached;
     const localRoute = this.fallbackRoute(message, history);
-    if (!this.shouldUseAiRouter(message, localRoute)) {
+    if (!options.forceAi && !this.shouldUseAiRouter(message, localRoute)) {
       this.writeCache(key, localRoute);
       return localRoute;
     }
 
-    const text = await this.call({
-      model: this.config.routerModel,
-      maxTokens: this.config.routerMaxTokens,
-      temperature: 0,
-      system: '',
-      messages: [{ role: 'user', content: this.buildRouterUserPrompt(payload) }],
-      purpose: 'router'
-    });
+    let text;
+    try {
+      text = await this.call({
+        model: this.config.routerModel,
+        maxTokens: this.config.routerMaxTokens,
+        temperature: 0,
+        system: '',
+        messages: [{ role: 'user', content: this.buildRouterUserPrompt(payload) }],
+        purpose: 'router'
+      });
+    } catch (error) {
+      const warning = `AI Router lỗi; đã dùng Router bằng code: ${error.message}`;
+      console.warn(warning);
+      const fallback = this.fallbackRoute(message, history, warning);
+      this.writeCache(key, fallback);
+      return fallback;
+    }
 
     const parsed = this.parseJson(text);
     let result;
@@ -918,7 +1262,9 @@ class AiService {
       result = this.fallbackRoute(message, history, warning);
     } else {
       result = {
-        ...this.normalizeRoute(parsed, message),
+        ...this.finalizeProductRoute(this.normalizeRoute(parsed, message), message, history),
+        corrections: resolution.corrections,
+        ambiguities: resolution.ambiguous,
         _source: 'ai-router'
       };
     }

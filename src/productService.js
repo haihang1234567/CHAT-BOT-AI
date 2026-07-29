@@ -70,6 +70,7 @@ function numberValue(value) {
 
 function normalizeText(value) {
   return clean(value)
+    .replace(/,/g, '.')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd')
@@ -116,6 +117,26 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function editDistance(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= a.length; row += 1) {
+    let diagonal = previous[0];
+    previous[0] = row;
+    for (let column = 1; column <= b.length; column += 1) {
+      const above = previous[column];
+      previous[column] = Math.min(
+        previous[column] + 1,
+        previous[column - 1] + 1,
+        diagonal + (a[row - 1] === b[column - 1] ? 0 : 1)
+      );
+      diagonal = above;
+    }
+  }
+  return previous[b.length];
+}
+
 function termInText(text, rawTerm) {
   const term = canonicalSearchText(rawTerm);
   if (!term) return false;
@@ -132,6 +153,7 @@ function parsePriceIntent(rawQuery) {
     if (!Number.isFinite(value)) return null;
     if (/trieu|m\b/.test(unit || '')) return value * 1_000_000;
     if (/nghin|k\b/.test(unit || '')) return value * 1_000;
+    if (!unit && value >= 100 && value <= 10000) return value * 1_000;
     return value;
   };
 
@@ -158,6 +180,8 @@ class ProductService {
     this.productById = new Map();
     this.variantById = new Map();
     this.codeIndex = new Map();
+    this.catalogVocabulary = new Set();
+    this.brandNames = [];
     this.source = 'empty';
     this.lastLoadedAt = null;
     if (options.loadCsv !== false) this.load();
@@ -275,6 +299,21 @@ class ProductService {
     this.productById = nextProductById;
     this.variantById = nextVariantById;
     this.codeIndex = nextCodeIndex;
+    this.catalogVocabulary = new Set();
+    this.brandNames = unique(finalized.map((product) => canonicalSearchText(product.brand)));
+    for (const product of finalized) {
+      const identityFields = [
+        product.brand,
+        product.type,
+        ...(product.collections || []),
+        ...(product.collectionHandles || [])
+      ];
+      for (const field of identityFields) {
+        for (const token of canonicalSearchText(field).split(' ')) {
+          if (token.length >= 4 && !/\d/.test(token)) this.catalogVocabulary.add(token);
+        }
+      }
+    }
     this.source = source;
     this.lastLoadedAt = new Date().toISOString();
   }
@@ -285,6 +324,68 @@ class ProductService {
       productCount: this.products.length,
       variantCount: this.products.reduce((sum, product) => sum + product.variants.length, 0),
       lastLoadedAt: this.lastLoadedAt
+    };
+  }
+
+  catalogBrands() {
+    return [...this.brandNames];
+  }
+
+  normalizeCatalogQuery(rawQuery) {
+    const original = clean(rawQuery);
+    const canonical = canonicalSearchText(original);
+    if (!canonical || !this.catalogVocabulary.size) {
+      return { query: canonical || original, corrections: [], ambiguous: [] };
+    }
+
+    const corrections = [];
+    const ambiguous = [];
+    const protectedWords = new Set([
+      'admin', 'anh', 'ban', 'bao', 'cho', 'con', 'duoi', 'gia', 'hang',
+      'khong', 'mau', 'muon', 'nao', 'size', 'tham', 'them', 'tren', 'xem'
+    ]);
+    const correctedTokens = canonical.split(' ').map((token) => {
+      if (
+        token.length < 4
+        || /\d/.test(token)
+        || protectedWords.has(token)
+        || this.catalogVocabulary.has(token)
+      ) return token;
+
+      const ranked = [...this.catalogVocabulary]
+        .map((candidate) => {
+          const prefix = candidate.startsWith(token) && token.length >= 4;
+          return {
+            candidate,
+            distance: prefix ? Math.min(1, candidate.length - token.length) : editDistance(token, candidate),
+            prefix
+          };
+        })
+        .filter((item) => {
+          const allowed = Math.max(token.length, item.candidate.length) >= 7 ? 2 : 1;
+          return item.prefix || item.distance <= allowed;
+        })
+        .sort((a, b) => Number(b.prefix) - Number(a.prefix)
+          || a.distance - b.distance
+          || a.candidate.length - b.candidate.length);
+      if (!ranked.length) return token;
+
+      const best = ranked[0];
+      const tied = ranked.filter((item) => (
+        item.prefix === best.prefix && item.distance === best.distance
+      ));
+      if (tied.length > 1) {
+        ambiguous.push({ input: token, options: tied.slice(0, 3).map((item) => item.candidate) });
+        return token;
+      }
+      if (best.candidate !== token) corrections.push({ input: token, output: best.candidate });
+      return best.candidate;
+    });
+
+    return {
+      query: correctedTokens.join(' '),
+      corrections,
+      ambiguous
     };
   }
 
@@ -517,6 +618,7 @@ class ProductService {
     const filters = {
       query: clean(search.query || fallbackQuery),
       productIds: unique((search.productIds || []).map(clean)),
+      excludeProductIds: unique((search.excludeProductIds || []).map(clean)),
       codes: unique([...(search.codes || []), ...(search.productIds || [])].map(clean)),
       names: this.normalizedList(search.names),
       brands: this.normalizedList(search.brands),
@@ -573,6 +675,7 @@ class ProductService {
 
     const scored = [];
     for (const product of pool) {
+      if (filters.excludeProductIds.includes(String(product.id))) continue;
       const productName = normalizeText(product.name);
       const brand = normalizeText(product.brand);
       const searchable = product.searchText;

@@ -53,6 +53,20 @@ body.customer-page { min-height: 100vh; background: radial-gradient(circle at to
 @keyframes typing { to { transform: translateY(-4px); opacity: .45; } }
 
 .product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+.product-list { display: grid; gap: 8px; margin-top: 10px; }
+.compact-product { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: 0 5px 16px rgba(30,61,51,.05); }
+.compact-product-image { width: 78px; height: 78px; align-self: center; border-radius: 10px; object-fit: contain; background: #f3f6f5; }
+.compact-product-info { min-width: 0; display: grid; align-content: start; gap: 4px; }
+.compact-product-meta { overflow: hidden; color: var(--primary); font-size: 9px; font-weight: 800; letter-spacing: .05em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.compact-product-name { display: -webkit-box; overflow: hidden; font-size: 12px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.compact-product-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.compact-product-price { color: var(--danger); font-size: 13px; font-weight: 900; }
+.compact-product-stock { padding: 2px 6px; border-radius: 999px; color: #08704f; background: #ebfbf3; font-size: 9px; font-weight: 800; }
+.compact-product-stock.out { color: #8a3535; background: #ffefef; }
+.compact-product-actions { display: flex; gap: 6px; margin-top: 2px; }
+.compact-product-actions a, .compact-product-actions button { min-height: 28px; display: grid; place-items: center; padding: 4px 8px; border-radius: 8px; font-size: 10px; font-weight: 750; text-decoration: none; }
+.compact-product-actions a { border: 1px solid var(--line); color: var(--text); background: var(--surface); }
+.compact-product-actions button { border: 1px solid var(--primary); color: #fff; background: var(--primary); }
 .product-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--surface); box-shadow: 0 8px 24px rgba(30,61,51,.06); }
 .product-image-wrap { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: #f3f6f5; }
 .product-image { width: 100%; height: 100%; object-fit: contain; display: block; }

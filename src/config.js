@@ -72,6 +72,7 @@ module.exports = {
     finalMaxTokens: Number(process.env.AI_FINAL_MAX_TOKENS || process.env.AI_MAX_TOKENS || 520),
     timeoutMs: Number(process.env.AI_TIMEOUT_MS || 45000),
     maxCandidates: Number(process.env.AI_MAX_CANDIDATES || 5),
+    chatProductPageSize: Math.max(1, Math.min(5, Number(process.env.CHAT_PRODUCT_PAGE_SIZE || 5))),
     maxVariants: Number(process.env.AI_MAX_VARIANTS || 10),
     descriptionChars: Number(process.env.AI_DESCRIPTION_CHARS || 650),
     historyMessages: Number(process.env.AI_HISTORY_MESSAGES || 4),

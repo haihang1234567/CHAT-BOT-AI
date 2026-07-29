@@ -1,4 +1,61 @@
 {
   "version": 1,
-  "cases": []
+  "cases": [
+    {
+      "id": "typo-pickleball-shoe-001",
+      "question": "giày pick",
+      "expected": {
+        "intent": "search_product",
+        "showProducts": false,
+        "productCategoryIncludes": ["pickleball"],
+        "replyMustInclude": ["trong nhà", "ngoài trời"],
+        "replyMustNotInclude": ["không thể phân tích"]
+      },
+      "note": "Hiểu cách viết tắt nhưng hỏi nhu cầu trước khi gửi ảnh."
+    },
+    {
+      "id": "running-budget-list-001",
+      "question": "giày chạy bộ dưới 1500",
+      "expected": {
+        "intent": "search_product",
+        "showProducts": true,
+        "productCategoryIncludes": ["chạy bộ"],
+        "maxPrice": 1500000,
+        "maxDisplayedProducts": 5
+      },
+      "note": "Đủ bộ môn và ngân sách thì trả danh sách gọn ngay."
+    },
+    {
+      "id": "product-more-no-repeat-001",
+      "question": "có còn đôi khác không",
+      "expected": {
+        "intent": "search_product",
+        "showProducts": true,
+        "preservePreviousFilters": true,
+        "excludePreviouslyDisplayedProducts": true
+      },
+      "note": "Câu nối tiếp phải xem trang kế tiếp và không lặp sản phẩm."
+    },
+    {
+      "id": "football-surface-required-001",
+      "question": "tư vấn giày bóng đá dưới 2 triệu",
+      "expected": {
+        "intent": "search_product",
+        "showProducts": false,
+        "replyMustIncludeAny": ["cỏ nhân tạo", "cỏ tự nhiên", "trong nhà"]
+      },
+      "note": "Không gửi giày bóng đá trước khi biết mặt sân."
+    },
+    {
+      "id": "catalog-brand-typo-001",
+      "question": "giày chạy bộ mizno dưới 1500",
+      "expected": {
+        "intent": "search_product",
+        "showProducts": true,
+        "brandIncludes": ["Mizuno"],
+        "maxPrice": 1500000
+      },
+      "note": "Sửa gần đúng bằng từ vựng lấy từ danh mục Haravan."
+    }
+  ]
 }
