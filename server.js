@@ -602,6 +602,84 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { message: deliveredMessage });
   }
 
+  match = matchPath(pathname, /^\/api\/admin\/sessions\/([^/]+)\/ai-suggestion$/);
+  if (req.method === 'POST' && match) {
+    if (!ai.isConfigured()) {
+      return sendJson(res, 400, {
+        error: 'AI chưa được cấu hình. Hãy kiểm tra token và model trong Environment.'
+      });
+    }
+
+    const body = await readJson(req);
+    const sessionId = match[0];
+    const session = store.getSession(sessionId);
+    if (!session) return sendJson(res, 404, { error: 'Không tìm thấy cuộc trò chuyện.' });
+    if (session.status !== 'human') {
+      return sendJson(res, 409, {
+        error: 'Hãy bấm “Nhận hỗ trợ” trước khi yêu cầu AI gợi ý câu trả lời.'
+      });
+    }
+
+    const requestedMessageId = String(body.messageId || '').trim();
+    let messageIndex = requestedMessageId
+      ? session.messages.findIndex((message) => message.id === requestedMessageId && message.role === 'user')
+      : -1;
+    if (requestedMessageId && messageIndex < 0) {
+      return sendJson(res, 404, { error: 'Không tìm thấy câu hỏi của khách đã chọn.' });
+    }
+    if (messageIndex < 0) {
+      for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+        if (session.messages[index].role === 'user') {
+          messageIndex = index;
+          break;
+        }
+      }
+    }
+    if (messageIndex < 0) {
+      return sendJson(res, 400, { error: 'Cuộc trò chuyện chưa có câu hỏi nào của khách.' });
+    }
+
+    const customerMessage = session.messages[messageIndex];
+    const history = session.messages.slice(0, messageIndex);
+
+    try {
+      const route = await ai.route(customerMessage.text, history);
+      if (!route) throw new Error('AI Router không trả về kế hoạch tư vấn.');
+
+      if (route.responseMode === 'clarify' && route.clarificationQuestion) {
+        return sendJson(res, 200, {
+          messageId: customerMessage.id,
+          question: customerMessage.text,
+          suggestion: route.clarificationQuestion,
+          products: [],
+          source: route.cached ? 'ai-router-cache-clarify' : 'ai-router-clarify'
+        });
+      }
+
+      const candidates = route.needDatabase
+        ? products.queryByPlan(route, customerMessage.text, route.search.limit)
+        : [];
+      const finalResult = route.needFinalAi
+        ? await ai.answer(customerMessage.text, route, candidates, history)
+        : ai.fallbackFinal(customerMessage.text, route, candidates);
+      if (!finalResult?.reply) throw new Error('AI không tạo được câu trả lời gợi ý.');
+
+      return sendJson(res, 200, {
+        messageId: customerMessage.id,
+        question: customerMessage.text,
+        suggestion: finalResult.reply,
+        products: productCardsByIds(finalResult.productIds, candidates),
+        source: [
+          route.cached ? 'ai-router-cache' : 'ai-router',
+          finalResult.cached ? 'ai-final-cache' : 'ai-final'
+        ].join('+')
+      });
+    } catch (error) {
+      console.error('Lỗi tạo gợi ý trả lời cho Admin:', error.message);
+      return sendJson(res, 502, { error: `Không tạo được gợi ý: ${error.message}` });
+    }
+  }
+
   if (req.method === 'GET' && pathname === '/api/admin/orders') {
     return sendJson(res, 200, { orders: store.listOrders() });
   }
