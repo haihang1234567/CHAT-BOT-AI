@@ -68,6 +68,18 @@ Mật khẩu admin mặc định của bản test: `123456`.
 
 Khách đang online sẽ nhận thẻ sản phẩm ngay. Mã sản phẩm được lưu cùng tin nhắn nên khi khách tải lại trang, ảnh, giá, màu, size, tồn kho và nút xem chi tiết vẫn được khôi phục từ dữ liệu hiện tại.
 
+### Nhờ AI gợi ý câu trả lời cho nhân viên
+
+Trong cuộc trò chuyện do nhân viên hỗ trợ, mỗi tin nhắn của khách có nút **Gợi ý trả lời**:
+
+1. Nhân viên bấm **Gợi ý trả lời** ở đúng câu hỏi cần hỗ trợ.
+2. AI đọc câu hỏi, lịch sử trước câu hỏi đó và tra dữ liệu sản phẩm khi cần.
+3. Admin hiển thị bản nháp để nhân viên sửa lại.
+4. Bấm **Chèn vào ô trả lời** để duyệt rồi gửi bằng tay.
+5. Nếu AI tìm được sản phẩm liên quan, có thể chọn **Dùng câu trả lời và sản phẩm** để chuyển sang bước duyệt thẻ sản phẩm.
+
+AI không tự chạy trong trạng thái nhân viên và không tự gửi bản nháp cho khách. Mỗi lần bấm có thể dùng luồng AI hai tầng (Router và Final); các lần bấm lại cùng nội dung có thể dùng cache hiện có.
+
 ## Cấu hình API AI
 
 Dùng cùng một model cho cả hai lần gọi:
