@@ -97,6 +97,20 @@
     const bubble = create('div', 'message-bubble', text);
     stack.append(meta, bubble);
 
+    if (role === 'assistant' && Array.isArray(options.suggestions) && options.suggestions.length) {
+      const followUps = create('div', 'message-follow-ups');
+      for (const suggestion of options.suggestions.slice(0, 3)) {
+        const label = String(typeof suggestion === 'string' ? suggestion : suggestion?.label || '').trim();
+        const prompt = String(typeof suggestion === 'string' ? suggestion : suggestion?.prompt || label).trim();
+        if (!label || !prompt) continue;
+        const button = create('button', 'message-follow-up', label);
+        button.type = 'button';
+        button.addEventListener('click', () => sendMessage(prompt));
+        followUps.appendChild(button);
+      }
+      if (followUps.childElementCount) stack.appendChild(followUps);
+    }
+
     if (Array.isArray(options.products) && options.products.length) {
       stack.appendChild(renderProductGrid(options.products));
     }
@@ -500,7 +514,11 @@
           }));
           productCards = loaded.filter(Boolean);
         }
-        addMessage(message.role, message.text, { id: message.id, products: productCards });
+        addMessage(message.role, message.text, {
+          id: message.id,
+          products: productCards,
+          suggestions: message.suggestions || []
+        });
       }
     } catch (_) {
       addMessage('assistant', 'Xin chào! Mình sẵn sàng hỗ trợ tìm và tư vấn sản phẩm Green Holding Sport.');
@@ -526,7 +544,11 @@
       if (!response.ok) throw new Error(result.error || 'Không gửi được tin nhắn.');
       hideTyping();
       if (result.reply && !state.seenMessageIds.has(result.messageId)) {
-        addMessage('assistant', result.reply, { id: result.messageId, products: result.products || [] });
+        addMessage('assistant', result.reply, {
+          id: result.messageId,
+          products: result.products || [],
+          suggestions: result.suggestions || []
+        });
       } else if (!result.reply && ['human', 'waiting_admin'].includes(result.sessionStatus)) {
         showToast('Tin nhắn đã gửi đến nhân viên.');
       }
@@ -550,7 +572,11 @@
     state.events.addEventListener('chat-message', (event) => {
       const message = JSON.parse(event.data);
       hideTyping();
-      addMessage(message.role, message.text, { id: message.id, products: message.products || [] });
+      addMessage(message.role, message.text, {
+        id: message.id,
+        products: message.products || [],
+        suggestions: message.suggestions || []
+      });
     });
   }
 

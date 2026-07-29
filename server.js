@@ -135,6 +135,11 @@ function productCardsByIds(ids, fallbackCandidates = []) {
   return Array.isArray(ids) ? selected : fallbackCandidates.slice(0, 5);
 }
 
+function routeSource(route, suffix = '') {
+  const base = route?._source || 'ai-router';
+  return `${base}${route?.cached ? '-cache' : ''}${suffix ? `-${suffix}` : ''}`;
+}
+
 function fallbackAnswer(message, candidates) {
   const exact = products.exactLookup(message);
   if (exact) {
@@ -289,6 +294,7 @@ async function handleApi(req, res, url) {
         reply: localResult.reply || 'AI chưa được cấu hình. Mình đã tìm sản phẩm bằng dữ liệu local.',
         products: route.showProducts ? selectedProducts : [],
         contextProductIds: selectedProducts.map((item) => item.id),
+        suggestions: localResult.suggestions || [],
         needsAdmin: false
       };
       source = 'local-no-ai';
@@ -308,7 +314,7 @@ async function handleApi(req, res, url) {
           store.setSessionStatus(sessionId, 'waiting_admin');
           const replyText = 'Mình đã chuyển yêu cầu sang nhân viên. Bạn cứ để lại nội dung cần hỗ trợ tại đây, nhân viên sẽ trả lời trực tiếp trong cửa sổ chat này.';
           const replyMessage = store.addMessage(sessionId, 'assistant', replyText, {
-            source: route.cached ? 'ai-router-cache-handoff' : 'ai-router-handoff',
+            source: routeSource(route, 'handoff'),
             route: routeMeta
           });
           emitCustomer(sessionId, 'chat-message', replyMessage);
@@ -325,7 +331,7 @@ async function handleApi(req, res, url) {
 
         if (route.responseMode === 'clarify' && route.clarificationQuestion) {
           const replyMessage = store.addMessage(sessionId, 'assistant', route.clarificationQuestion, {
-            source: route.cached ? 'ai-router-cache-clarify' : 'ai-router-clarify',
+            source: routeSource(route, 'clarify'),
             route: routeMeta
           });
           emitCustomer(sessionId, 'chat-message', replyMessage);
@@ -354,21 +360,24 @@ async function handleApi(req, res, url) {
             reply: finalResult.reply,
             products: route.showProducts ? selectedProducts : [],
             contextProductIds: selectedProducts.map((item) => item.id),
+            suggestions: finalResult.suggestions || [],
             needsAdmin: finalResult.needsAdmin
           };
           source = [
-            route.cached ? 'ai-router-cache' : 'ai-router',
+            routeSource(route),
             route.needDatabase ? 'database-code' : 'no-database',
             finalResult.cached ? 'ai-final-cache' : 'ai-final'
           ].join('+');
         } else {
+          const localResult = ai.fallbackFinal(messageText, route, candidates);
           responseData = {
-            reply: route.clarificationQuestion || 'Bạn vui lòng cung cấp thêm thông tin để mình hỗ trợ chính xác hơn.',
-            products: route.showProducts ? candidates : [],
-            contextProductIds: candidates.map((item) => item.id),
+            reply: localResult.reply,
+            products: route.showProducts ? productCardsByIds(localResult.productIds, candidates) : [],
+            contextProductIds: localResult.productIds || candidates.map((item) => item.id),
+            suggestions: localResult.suggestions || [],
             needsAdmin: false
           };
-          source = `${route.cached ? 'ai-router-cache' : 'ai-router'}+code-response`;
+          source = `${routeSource(route)}+code-response`;
         }
       } catch (error) {
         console.error('Lỗi luồng AI hai tầng:', error.message);
@@ -384,6 +393,7 @@ async function handleApi(req, res, url) {
           reply: localResult.reply || 'AI đang tạm thời chưa kết nối. Mình đã thử tìm sản phẩm bằng dữ liệu local; bạn cũng có thể gõ “admin” để gặp nhân viên.',
           products: route.showProducts ? selectedProducts : [],
           contextProductIds: selectedProducts.map((item) => item.id),
+          suggestions: localResult.suggestions || [],
           needsAdmin: false
         };
         source = databaseCandidates.length ? 'database-after-ai-error' : 'local-after-ai-error';
@@ -395,6 +405,7 @@ async function handleApi(req, res, url) {
       source,
       productIds: responseData.products.map((item) => item.id),
       contextProductIds: responseData.contextProductIds || responseData.products.map((item) => item.id),
+      suggestions: responseData.suggestions || [],
       route: routeMeta
     });
     emitCustomer(sessionId, 'chat-message', { ...replyMessage, products: responseData.products });
@@ -403,6 +414,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       reply: responseData.reply,
       products: responseData.products,
+      suggestions: responseData.suggestions || [],
       sessionStatus: store.getSession(sessionId).status,
       messageId: replyMessage.id,
       source
@@ -652,7 +664,7 @@ async function handleApi(req, res, url) {
           question: customerMessage.text,
           suggestion: route.clarificationQuestion,
           products: [],
-          source: route.cached ? 'ai-router-cache-clarify' : 'ai-router-clarify'
+          source: routeSource(route, 'clarify')
         });
       }
 
@@ -660,7 +672,7 @@ async function handleApi(req, res, url) {
         ? products.queryByPlan(route, customerMessage.text, route.search.limit)
         : [];
       const finalResult = route.needFinalAi
-        ? await ai.answer(customerMessage.text, route, candidates, history)
+        ? await ai.answer(customerMessage.text, route, candidates, history, { purpose: 'admin-suggestion' })
         : ai.fallbackFinal(customerMessage.text, route, candidates);
       if (!finalResult?.reply) throw new Error('AI không tạo được câu trả lời gợi ý.');
 
@@ -670,7 +682,7 @@ async function handleApi(req, res, url) {
         suggestion: finalResult.reply,
         products: productCardsByIds(finalResult.productIds, candidates),
         source: [
-          route.cached ? 'ai-router-cache' : 'ai-router',
+          routeSource(route),
           finalResult.cached ? 'ai-final-cache' : 'ai-final'
         ].join('+')
       });

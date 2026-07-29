@@ -17,6 +17,7 @@ const haravanToken = String(process.env.HARAVAN_ACCESS_TOKEN || '').trim();
 const productSource = String(process.env.PRODUCT_SOURCE || (haravanToken ? 'haravan' : 'csv'))
   .trim()
   .toLowerCase();
+const aiCostMode = String(process.env.AI_COST_MODE || 'balanced').trim().toLowerCase();
 
 module.exports = {
   port: Number(process.env.PORT || 3100),
@@ -60,6 +61,7 @@ module.exports = {
     routerHistoryMessages: Number(process.env.AI_ROUTER_HISTORY_MESSAGES || 3),
     routerHistoryChars: Number(process.env.AI_ROUTER_HISTORY_CHARS || 220),
     cacheTtlMs: Number(process.env.AI_CACHE_TTL_MS || 1800000),
-    alwaysFinal: booleanValue(process.env.AI_ALWAYS_FINAL, true)
+    alwaysFinal: booleanValue(process.env.AI_ALWAYS_FINAL, true),
+    costMode: ['balanced', 'quality'].includes(aiCostMode) ? aiCostMode : 'balanced'
   }
 };
