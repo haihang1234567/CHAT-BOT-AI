@@ -248,6 +248,8 @@ class AiService {
       'Luôn phân tích đủ: bộ môn, môi trường/mặt sân, trình độ, đặc điểm cơ thể hoặc form chân, ngân sách, size, màu và mục đích sử dụng.',
       'Ưu tiên nội dung tin nhắn hiện tại. Chỉ dùng HISTORY khi khách nói “mẫu này”, “đôi trên” hoặc tham chiếu rõ ràng; không tự lấy bộ môn cũ gán vào câu mới.',
       'Hiểu viết tắt và sai chính tả phổ biến: pick/pickle/pickelball là pickleball; volley là bóng chuyền; badminton là cầu lông; running/jogging là chạy bộ; soccer/football là bóng đá.',
+      'Các mã đế TF/AS/AG/FG/SG/IC là tín hiệu thuộc GIÀY BÓNG ĐÁ, không được gán cho giày cầu lông, chạy bộ, bóng chuyền, tennis hoặc pickleball.',
+      'TF/AS/AG dùng cho các dạng sân cỏ nhân tạo; FG/SG dùng cho sân cỏ tự nhiên; IC dùng cho sân trong nhà/futsal.',
       'Phải tách rõ LOẠI HÀNG và BỘ MÔ. “giày pick” là giày pickleball, không phải vợt; “vợt pick” mới là vợt pickleball.',
       'Nếu khách chỉ nói câu quá ngắn hoặc chưa đủ nghĩa như “giày đi”, không được đoán bộ môn từ lịch sử; hãy đặt responseMode=clarify và hỏi lại.',
       'requirements là điều kiện bắt buộc. Mỗi object là một nhóm OR: sản phẩm chỉ cần khớp một terms trong nhóm.',
@@ -417,9 +419,10 @@ class AiService {
 
   codeSearchRules(message) {
     const q = canonicalSearchText(message);
+    const footballSoleCode = q.match(/\b(tf|as|ag|fg|sg|ic)\b/)?.[1] || '';
     const categoryRules = [
       ['giay bong chuyen', /\b(giay bong chuyen|bong chuyen)\b/],
-      ['bong da', /\b(giay bong da|giay da bong|giay (?:da )?san (?:5|7|11)|bong da|san co nhan tao|futsal)\b/],
+      ['bong da', /\b(giay bong da|giay da bong|giay (?:da )?san (?:5|7|11)|bong da|san co nhan tao|futsal|tf|as|ag|fg|sg|ic)\b/],
       ['giay chay bo', /\b(giay chay bo|giay chay|chay bo|chay dia hinh|running|trail running)\b/],
       ['giay cau long', /\b(giay cau long)\b/],
       ['vot cau long', /\b(vot cau long)\b/],
@@ -481,16 +484,32 @@ class AiService {
 
     const isFootball = categories.includes('bong da');
     const artificialFootball = isFootball
-      && /\b(san (?:5|7)|san co nhan tao|co nhan tao|dinh dam|turf)\b/.test(q);
+      && /\b(san (?:5|7)|san co nhan tao|co nhan tao|dinh dam|turf|tf|as|ag)\b/.test(q);
     const naturalFootball = isFootball
-      && /\b(san 11|san co tu nhien|co tu nhien|firm ground)\b/.test(q);
+      && /\b(san 11|san co tu nhien|co tu nhien|firm ground|fg|sg)\b/.test(q);
     const indoorFootball = isFootball
-      && /\b(futsal|san trong nha|indoor)\b/.test(q);
+      && /\b(futsal|san trong nha|indoor|ic)\b/.test(q);
 
-    if (artificialFootball) {
+    if (footballSoleCode) {
+      requirements.push({
+        label: `Đúng mã đế bóng đá ${footballSoleCode.toUpperCase()}`,
+        terms: [footballSoleCode],
+        scope: 'identity'
+      });
+      const incompatibleSoles = {
+        tf: ['fg', 'sg', 'ic'],
+        as: ['fg', 'sg', 'ic'],
+        ag: ['fg', 'sg', 'ic'],
+        fg: ['tf', 'as', 'ag', 'ic'],
+        sg: ['tf', 'as', 'ag', 'ic'],
+        ic: ['tf', 'as', 'ag', 'fg', 'sg']
+      };
+      excludeTerms.push(...(incompatibleSoles[footballSoleCode] || []));
+      customerNeeds.push(`Giày bóng đá đúng mã đế ${footballSoleCode.toUpperCase()}`);
+    } else if (artificialFootball) {
       requirements.push({
         label: 'Mặt sân bóng đá sân 5/7 hoặc cỏ nhân tạo',
-        terms: ['tf', 'as', 'cỏ nhân tạo', 'đinh dăm', 'turf'],
+        terms: ['tf', 'as', 'ag', 'cỏ nhân tạo', 'đinh dăm', 'turf'],
         scope: 'identity'
       });
       excludeTerms.push('fg', 'sg');
@@ -910,6 +929,7 @@ class AiService {
     return [
       'Bạn là nhân viên tư vấn Green Holding Sport, trả lời tự nhiên như người thật.',
       'Backend đã phân tích câu hỏi và truy vấn dữ liệu bằng code; hãy viết câu trả lời cuối thật ngắn gọn.',
+      'Kiến thức nền bắt buộc: TF/AS/AG là mã đế giày bóng đá cho sân cỏ nhân tạo; FG/SG cho sân cỏ tự nhiên; IC cho sân trong nhà/futsal. Không bao giờ tư vấn giày cầu lông, chạy bộ, bóng chuyền, tennis hoặc pickleball như một sản phẩm TF/AS/AG/FG/SG/IC.',
       'Đối chiếu customerNeeds, requirements, preferences, excludeTerms và ngân sách trong ROUTE.',
       'Thông tin sản phẩm chỉ được lấy từ DATABASE_RESULTS. Không bịa giá, tồn kho, màu, size, mã, công nghệ hoặc chính sách.',
       'Không gọi một sản phẩm là phù hợp nếu tên, loại, mô tả hoặc biến thể mâu thuẫn với điều kiện bắt buộc của khách.',
