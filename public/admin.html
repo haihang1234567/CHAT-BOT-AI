@@ -85,6 +85,25 @@
                 <button id="sendSelectedProducts" class="primary-button" type="button" disabled>Gửi sản phẩm đã chọn</button>
               </div>
             </section>
+            <section id="adminAiSuggestionPanel" class="admin-ai-suggestion-panel" hidden>
+              <div class="admin-ai-suggestion-heading">
+                <div>
+                  <span class="eyebrow">GỢI Ý TỪ AI – CHƯA GỬI CHO KHÁCH</span>
+                  <p id="adminAiSuggestionQuestion"></p>
+                </div>
+                <button id="closeAiSuggestion" class="icon-button" type="button" aria-label="Đóng gợi ý">×</button>
+              </div>
+              <div id="adminAiSuggestionStatus" class="admin-ai-suggestion-status"></div>
+              <textarea id="adminAiSuggestionText" rows="4" maxlength="3000"
+                placeholder="AI đang chuẩn bị câu trả lời..." disabled></textarea>
+              <div id="adminAiSuggestionProducts" class="admin-ai-suggestion-products"></div>
+              <div class="admin-ai-suggestion-actions">
+                <button id="useAiSuggestion" class="secondary-button" type="button" disabled>Chèn vào ô trả lời</button>
+                <button id="useAiSuggestionWithProducts" class="primary-button" type="button" hidden>
+                  Dùng câu trả lời và sản phẩm
+                </button>
+              </div>
+            </section>
             <form id="adminMessageForm" class="chat-composer admin-composer">
               <textarea id="adminMessageInput" rows="1" maxlength="3000" placeholder="Nhập tin nhắn trả lời khách..." required></textarea>
               <button class="primary-button" type="submit">Gửi</button>
