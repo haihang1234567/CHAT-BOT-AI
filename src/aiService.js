@@ -239,33 +239,19 @@ class AiService {
 
   buildRouterSystemPrompt() {
     return [
-      'Bạn là AI định tuyến câu hỏi cho chatbot bán hàng Green Holding Sport.',
-      'Nhiệm vụ duy nhất: hiểu ý khách và tạo KẾ HOẠCH TRUY VẤN DỮ LIỆU dưới dạng JSON.',
-      'Bạn không có quyền truy cập database, không viết SQL, không tự trả lời giá/tồn kho/màu/size.',
-      'Backend sẽ đọc các bộ lọc JSON và tự truy vấn CSV/database an toàn.',
-      'Giá phải đổi thành số VND nguyên, ví dụ 2 triệu = 2000000.',
-      'Khi khách nói “mẫu này”, “mẫu trên”, dùng productIds trong HISTORY nếu có.',
-      'Luôn phân tích đủ: bộ môn, môi trường/mặt sân, trình độ, đặc điểm cơ thể hoặc form chân, ngân sách, size, màu và mục đích sử dụng.',
-      'Ưu tiên nội dung tin nhắn hiện tại. Chỉ dùng HISTORY khi khách nói “mẫu này”, “đôi trên” hoặc tham chiếu rõ ràng; không tự lấy bộ môn cũ gán vào câu mới.',
-      'Hiểu viết tắt và sai chính tả phổ biến: pick/pickle/pickelball là pickleball; volley là bóng chuyền; badminton là cầu lông; running/jogging là chạy bộ; soccer/football là bóng đá.',
-      'Các mã đế TF/AS/AG/FG/SG/IC là tín hiệu thuộc GIÀY BÓNG ĐÁ, không được gán cho giày cầu lông, chạy bộ, bóng chuyền, tennis hoặc pickleball.',
-      'TF/AS/AG dùng cho các dạng sân cỏ nhân tạo; FG/SG dùng cho sân cỏ tự nhiên; IC dùng cho sân trong nhà/futsal.',
-      'Phải tách rõ LOẠI HÀNG và BỘ MÔ. “giày pick” là giày pickleball, không phải vợt; “vợt pick” mới là vợt pickleball.',
-      'Nếu khách chỉ nói câu quá ngắn hoặc chưa đủ nghĩa như “giày đi”, không được đoán bộ môn từ lịch sử; hãy đặt responseMode=clarify và hỏi lại.',
-      'requirements là điều kiện bắt buộc. Mỗi object là một nhóm OR: sản phẩm chỉ cần khớp một terms trong nhóm.',
-      'preferences là điều kiện ưu tiên để xếp hạng, không bắt buộc. excludeTerms là từ nhận diện sản phẩm phải loại bỏ.',
-      'Ví dụ sân bóng 5/7 hoặc cỏ nhân tạo: requirements có nhóm TF/AS/cỏ nhân tạo/đinh dăm và excludeTerms có FG, SG.',
-      'Ví dụ sân 11 cỏ tự nhiên: requirements có nhóm FG/SG/cỏ tự nhiên và loại TF/AS/IC.',
-      'Ví dụ chạy địa hình phải ưu tiên hoặc yêu cầu trail/địa hình; không trộn giày chạy đường bằng nếu khách nói rõ địa hình.',
-      'Nếu yêu cầu còn mơ hồ và có thể dẫn tới chọn sai loại sản phẩm, đặt responseMode=clarify và viết clarificationQuestion.',
-      'showProducts=true chỉ khi khách muốn tìm, xem, gợi ý, so sánh, chọn hoặc mua sản phẩm.',
-      'showProducts=false với câu hỏi chỉ cần giải đáp bằng chữ như quy đổi chiều dài bàn chân sang size, cách chọn size, cách bảo quản, giải thích công nghệ hoặc hỏi kiến thức.',
-      'Dù showProducts=false, vẫn có thể đặt needDatabase=true để dùng dữ liệu sản phẩm làm ngữ cảnh trả lời.',
-      'needDatabase=true khi cần sản phẩm, mã, giá, màu, size, tồn kho, ảnh, link, mô tả, tư vấn, so sánh hoặc đặt hàng.',
-      'needFinalAi=true để AI thứ hai soạn câu trả lời. Chỉ false cho tác vụ hệ thống không cần lời đáp AI.',
-      'Không thêm trường ngoài schema.',
-      'Trả đúng một JSON, không markdown:',
-      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needFinalAi":true,"showProducts":false,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
+      'Bạn phân tích ý định cho chatbot thể thao Green Holding Sport và chỉ trả JSON.',
+      'Tách rõ hai nhánh: tìm/tư vấn sản phẩm và hỏi kiến thức.',
+      'Với sản phẩm, suy luận đầy đủ khách cần gì: bộ môn, loại hàng, mục đích, môi trường/mặt sân, đặc điểm người dùng, hãng, size, màu, ngân sách và tồn kho.',
+      'requirements là điều kiện bắt buộc; preferences là ưu tiên. Không tự hạ điều kiện bắt buộc để lấy sản phẩm gần đúng.',
+      'Mỗi requirements/preferences là một nhóm OR; nhiều nhóm khác nhau phải đồng thời thỏa mãn.',
+      'Dùng scope=identity cho bộ môn, loại hàng, dòng sản phẩm hoặc mã kỹ thuật; scope=details cho tính năng và nhu cầu sử dụng.',
+      'Với câu hỏi kiến thức, đặt intent=general_question, needWeb=true, showProducts=false và viết webQuery ngắn gọn để tìm nguồn chính thống.',
+      'Không tự trả lời kiến thức trong bước này. Backend sẽ tìm nguồn rồi mới gọi AI tổng hợp.',
+      'Nếu câu hỏi thiếu thông tin có thể làm chọn sai sản phẩm, responseMode=clarify và hỏi đúng một câu.',
+      'Chỉ dùng HISTORY khi khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý”.',
+      'Giá đổi thành VND nguyên. Không viết SQL, không bịa dữ liệu và không thêm trường ngoài schema.',
+      'JSON_SCHEMA:',
+      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":3}}'
     ].join('\n');
   }
 
@@ -299,6 +285,22 @@ class AiService {
       'INPUT_JSON:',
       JSON.stringify(payload),
       '',
+      'OUTPUT_JSON_ONLY:'
+    ].join('\n');
+  }
+
+  buildKnowledgeUserPrompt(payload) {
+    return [
+      'Bạn là tư vấn viên thể thao Green Holding Sport.',
+      'Chỉ trả lời câu hỏi bằng thông tin có trong SOURCES. Không dùng trí nhớ để bổ sung dữ kiện.',
+      'Nếu SOURCES không đủ chứng minh, nói rõ chưa đủ nguồn; tuyệt đối không đoán.',
+      'Viết tiếng Việt tự nhiên, ngắn gọn 2-5 câu. Đặt ký hiệu [1], [2] ngay sau ý được nguồn hỗ trợ.',
+      'Không giới thiệu sản phẩm, không tạo ảnh/thẻ sản phẩm.',
+      'Chỉ dùng citationIds có trong SOURCES và tối đa 3 gợi ý hỏi tiếp.',
+      'Trả đúng JSON, không markdown:',
+      '{"reply":"...","citationIds":[1],"suggestions":[{"label":"...","prompt":"..."}]}',
+      'INPUT_JSON:',
+      JSON.stringify(payload),
       'OUTPUT_JSON_ONLY:'
     ].join('\n');
   }
@@ -398,8 +400,12 @@ class AiService {
 
   shouldUseAiRouter(message, route) {
     if (!route) return true;
-    if (['greeting', 'thanks', 'admin_handoff', 'general_question'].includes(route.intent)) return false;
-    if (route.responseMode === 'clarify') return false;
+    if (['greeting', 'thanks', 'admin_handoff'].includes(route.intent)) return false;
+    if (this.productService.exactLookup(message)) return false;
+    if ((route.search?.productIds || []).length && /\b(mau|size|gia|con hang|het hang|chi tiet|so sanh)\b/.test(normalizeText(message))) {
+      return false;
+    }
+    if (this.config.routerAlways) return true;
 
     const search = route.search || {};
     const hasCodeSignals = [
@@ -419,10 +425,9 @@ class AiService {
 
   codeSearchRules(message) {
     const q = canonicalSearchText(message);
-    const footballSoleCode = q.match(/\b(tf|as|ag|fg|sg|ic)\b/)?.[1] || '';
     const categoryRules = [
       ['giay bong chuyen', /\b(giay bong chuyen|bong chuyen)\b/],
-      ['bong da', /\b(giay bong da|giay da bong|giay (?:da )?san (?:5|7|11)|bong da|san co nhan tao|futsal|tf|as|ag|fg|sg|ic)\b/],
+      ['bong da', /\b(giay bong da|giay da bong|giay (?:da )?san (?:5|7|11)|bong da|san co nhan tao|futsal)\b/],
       ['giay chay bo', /\b(giay chay bo|giay chay|chay bo|chay dia hinh|running|trail running)\b/],
       ['giay cau long', /\b(giay cau long)\b/],
       ['vot cau long', /\b(vot cau long)\b/],
@@ -484,32 +489,16 @@ class AiService {
 
     const isFootball = categories.includes('bong da');
     const artificialFootball = isFootball
-      && /\b(san (?:5|7)|san co nhan tao|co nhan tao|dinh dam|turf|tf|as|ag)\b/.test(q);
+      && /\b(san (?:5|7)|san co nhan tao|co nhan tao|dinh dam|turf)\b/.test(q);
     const naturalFootball = isFootball
-      && /\b(san 11|san co tu nhien|co tu nhien|firm ground|fg|sg)\b/.test(q);
+      && /\b(san 11|san co tu nhien|co tu nhien|firm ground)\b/.test(q);
     const indoorFootball = isFootball
-      && /\b(futsal|san trong nha|indoor|ic)\b/.test(q);
+      && /\b(futsal|san trong nha|indoor)\b/.test(q);
 
-    if (footballSoleCode) {
-      requirements.push({
-        label: `Đúng mã đế bóng đá ${footballSoleCode.toUpperCase()}`,
-        terms: [footballSoleCode],
-        scope: 'identity'
-      });
-      const incompatibleSoles = {
-        tf: ['fg', 'sg', 'ic'],
-        as: ['fg', 'sg', 'ic'],
-        ag: ['fg', 'sg', 'ic'],
-        fg: ['tf', 'as', 'ag', 'ic'],
-        sg: ['tf', 'as', 'ag', 'ic'],
-        ic: ['tf', 'as', 'ag', 'fg', 'sg']
-      };
-      excludeTerms.push(...(incompatibleSoles[footballSoleCode] || []));
-      customerNeeds.push(`Giày bóng đá đúng mã đế ${footballSoleCode.toUpperCase()}`);
-    } else if (artificialFootball) {
+    if (artificialFootball) {
       requirements.push({
         label: 'Mặt sân bóng đá sân 5/7 hoặc cỏ nhân tạo',
-        terms: ['tf', 'as', 'ag', 'cỏ nhân tạo', 'đinh dăm', 'turf'],
+        terms: ['tf', 'as', 'cỏ nhân tạo', 'đinh dăm', 'turf'],
         scope: 'identity'
       });
       excludeTerms.push('fg', 'sg');
@@ -809,7 +798,9 @@ class AiService {
     }
 
     if (!candidates.length) {
-      reply = 'Mình chưa tìm thấy sản phẩm phù hợp trong dữ liệu hiện tại. Bạn gửi thêm tên, mã sản phẩm, size, màu hoặc mức giá nhé. Cần hỗ trợ trực tiếp, bạn có thể gõ “admin”.';
+      const analyzedNeeds = cleanList(route?.search?.customerNeeds, 4, 100);
+      const needText = analyzedNeeds.length ? ` theo yêu cầu: ${analyzedNeeds.join(', ')}` : '';
+      reply = `Mình chưa tìm thấy sản phẩm đáp ứng đủ${needText} trong kho hiện tại. Mình không thay bằng sản phẩm sai bộ môn hoặc sai điều kiện; bạn có thể đổi một tiêu chí hoặc gõ “admin” để nhân viên kiểm tra thêm.`;
     } else if (candidates.length === 1) {
       reply = `Mình đã tìm thấy “${candidates[0].name}”. Ảnh, giá, màu, size, tình trạng còn hàng và link chi tiết được hiển thị trong thẻ sản phẩm bên dưới.`;
     } else {
@@ -839,11 +830,21 @@ class AiService {
     ].includes(intent);
     const neverNeedsFinalAi = ['greeting', 'thanks', 'admin_handoff'].includes(intent)
       || String(raw?.responseMode) === 'clarify';
+    const isKnowledge = intent === 'general_question';
+    const isProductFlow = needDatabaseByIntent;
 
     const normalized = {
       intent,
       needDatabase: raw?.needDatabase === undefined ? needDatabaseByIntent : Boolean(raw.needDatabase),
-      needFinalAi: neverNeedsFinalAi ? false : (this.config.alwaysFinal ? true : Boolean(raw?.needFinalAi)),
+      needWeb: isKnowledge ? raw?.needWeb !== false : Boolean(raw?.needWeb),
+      webQuery: cleanString(raw?.webQuery || (isKnowledge ? message : ''), 500),
+      needFinalAi: neverNeedsFinalAi
+        ? false
+        : isKnowledge
+          ? true
+          : isProductFlow
+            ? Boolean(this.config.productFinalEnabled)
+            : Boolean(raw?.needFinalAi),
       showProducts: typeof raw?.showProducts === 'boolean'
         ? raw.showProducts
         : ['search_by_code', 'search_product', 'product_recommendation', 'compare_products', 'create_order'].includes(intent),
@@ -917,7 +918,7 @@ class AiService {
       result = this.fallbackRoute(message, history, warning);
     } else {
       result = {
-        ...this.mergeCodeRules(this.normalizeRoute(parsed, message), message),
+        ...this.normalizeRoute(parsed, message),
         _source: 'ai-router'
       };
     }
@@ -929,7 +930,6 @@ class AiService {
     return [
       'Bạn là nhân viên tư vấn Green Holding Sport, trả lời tự nhiên như người thật.',
       'Backend đã phân tích câu hỏi và truy vấn dữ liệu bằng code; hãy viết câu trả lời cuối thật ngắn gọn.',
-      'Kiến thức nền bắt buộc: TF/AS/AG là mã đế giày bóng đá cho sân cỏ nhân tạo; FG/SG cho sân cỏ tự nhiên; IC cho sân trong nhà/futsal. Không bao giờ tư vấn giày cầu lông, chạy bộ, bóng chuyền, tennis hoặc pickleball như một sản phẩm TF/AS/AG/FG/SG/IC.',
       'Đối chiếu customerNeeds, requirements, preferences, excludeTerms và ngân sách trong ROUTE.',
       'Thông tin sản phẩm chỉ được lấy từ DATABASE_RESULTS. Không bịa giá, tồn kho, màu, size, mã, công nghệ hoặc chính sách.',
       'Không gọi một sản phẩm là phù hợp nếu tên, loại, mô tả hoặc biến thể mâu thuẫn với điều kiện bắt buộc của khách.',
@@ -1064,6 +1064,76 @@ class AiService {
     return result;
   }
 
+  async answerKnowledge(message, route, sources = [], history = [], options = {}) {
+    const safeSources = (Array.isArray(sources) ? sources : [])
+      .slice(0, 3)
+      .map((source, index) => ({
+        id: Number(source.id || index + 1),
+        title: cleanString(source.title, 160),
+        url: cleanString(source.url, 600),
+        content: cleanString(source.content, 650)
+      }))
+      .filter((source) => source.url && source.content);
+
+    if (!safeSources.length) {
+      return {
+        reply: 'Mình chưa tìm được nguồn chính thống đủ rõ để trả lời chắc chắn nên sẽ không suy đoán. Bạn có thể thử hỏi cụ thể hơn hoặc gõ “admin” để nhân viên kiểm tra giúp.',
+        productIds: [],
+        sources: [],
+        suggestions: cleanSuggestions([
+          { label: 'Hỏi cụ thể hơn', prompt: `Giải thích chính xác và có nguồn về: ${cleanString(message, 110)}` },
+          { label: 'Gặp nhân viên', prompt: 'admin' }
+        ]),
+        needsAdmin: false,
+        _source: 'knowledge-no-source'
+      };
+    }
+
+    const payload = {
+      question: cleanString(message, 1000),
+      analyzedIntent: {
+        webQuery: cleanString(route?.webQuery, 500),
+        customerNeeds: cleanList(route?.search?.customerNeeds, 8, 140),
+        responseMode: route?.responseMode || 'brief'
+      },
+      recentHistory: this.compactHistory(history, { limit: 1, maxChars: 180 }),
+      sources: safeSources
+    };
+    const key = this.cacheKey('knowledge-final', payload);
+    const cached = this.readCache(key);
+    if (cached) return cached;
+
+    const text = await this.call({
+      model: this.config.chatModel,
+      maxTokens: Math.min(320, Math.max(180, Number(this.config.finalMaxTokens || 280))),
+      temperature: 0,
+      system: '',
+      messages: [{ role: 'user', content: this.buildKnowledgeUserPrompt(payload) }],
+      purpose: options.purpose || 'knowledge-final'
+    });
+
+    const parsed = this.parseJson(text);
+    const allowedIds = new Set(safeSources.map((source) => source.id));
+    const citationIds = Array.isArray(parsed?.citationIds)
+      ? parsed.citationIds.map(Number).filter((id) => allowedIds.has(id)).slice(0, 3)
+      : [];
+    const selectedSources = safeSources.filter((source) => (
+      citationIds.length ? citationIds.includes(source.id) : true
+    ));
+    const result = {
+      reply: cleanString(parsed?.reply || text, 3000),
+      productIds: [],
+      sources: selectedSources.map(({ id, title, url, domain }) => ({ id, title, url, domain })),
+      suggestions: cleanSuggestions(parsed?.suggestions).length
+        ? cleanSuggestions(parsed.suggestions)
+        : this.fallbackSuggestions(message, { ...route, showProducts: false }, []),
+      needsAdmin: false,
+      _source: 'knowledge-grounded-ai'
+    };
+    this.writeCache(key, result);
+    return result;
+  }
+
   async testConnection() {
     if (!this.isConfigured()) {
       return {
@@ -1072,22 +1142,14 @@ class AiService {
       };
     }
 
-    const testMessage = 'FG và TF khác nhau thế nào?';
+    const testMessage = 'Tư vấn giày thể thao phù hợp với nhu cầu của tôi';
     const route = await this.route(testMessage, []);
-    const final = await this.answer(
-      testMessage,
-      { ...route, needDatabase: false },
-      [],
-      [],
-      { purpose: 'connection-test' }
-    );
-    const fallbackUsed = String(route._source || '').includes('fallback')
-      || String(final._source || '').includes('fallback');
+    const fallbackUsed = String(route?._source || '').includes('fallback');
     return {
       ok: true,
       message: fallbackUsed
-        ? `API kết nối được nhưng model đang mang persona Claude Code. Chế độ tương thích đã hoạt động: Router=${route._source || 'unknown'}, Final=${final._source || 'unknown'}. Chatbot vẫn chạy và tự fallback bằng code khi AI không trả JSON.`
-        : `Kết nối thành công. Chế độ tiết kiệm dùng Router=${route._source || 'unknown'} và 1 lần AI trả lời: ${final.reply}`
+        ? `API kết nối được nhưng Router không trả JSON chuẩn; hệ thống đang dùng fallback bằng code: ${route?._source || 'unknown'}.`
+        : `Kết nối thành công. Haiku đã phân tích được câu hỏi thành intent=${route?.intent || 'unknown'}; câu hỏi sản phẩm chỉ cần một lần gọi AI.`
     };
   }
 }

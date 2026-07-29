@@ -30,18 +30,23 @@ async function waitForServer(baseUrl, child) {
   throw new Error('Server kiểm thử không khởi động.');
 }
 
-function promptPayload(body) {
-  const prompt = String(body?.messages?.[0]?.content || '');
-  const start = prompt.indexOf('INPUT_JSON:\n');
+function routerInput(prompt) {
+  const marker = 'INPUT_JSON:\n';
+  const start = prompt.indexOf(marker);
   const end = prompt.lastIndexOf('\n\nOUTPUT_JSON_ONLY:');
   if (start < 0 || end < 0) return {};
-  return JSON.parse(prompt.slice(start + 'INPUT_JSON:\n'.length, end));
+  return JSON.parse(prompt.slice(start + marker.length, end));
 }
 
-test('knowledge chỉ trả text, product dùng 1 AI call rồi code dựng đủ thẻ biến thể', async () => {
-  const [port, aiPort] = await Promise.all([availablePort(), availablePort()]);
+test('product chỉ gọi AI phân tích một lần; knowledge tìm web rồi tổng hợp có nguồn', async () => {
+  const [port, aiPort, webPort] = await Promise.all([
+    availablePort(),
+    availablePort(),
+    availablePort()
+  ]);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghs-cost-flow-'));
-  const prompts = [];
+  const aiPrompts = [];
+  let webCalls = 0;
 
   const aiStub = http.createServer((req, res) => {
     const chunks = [];
@@ -49,31 +54,55 @@ test('knowledge chỉ trả text, product dùng 1 AI call rồi code dựng đ�
     req.on('end', () => {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const prompt = String(body?.messages?.[0]?.content || '');
-      prompts.push(prompt);
-      const input = promptPayload(body);
-      const isKnowledge = /FG và TF/i.test(input.customerMessage || '');
-      const firstProductId = input.databaseResults?.[0]?.id;
-      const result = isKnowledge
-        ? {
-            reply: 'FG phù hợp sân cỏ tự nhiên, còn TF phù hợp sân cỏ nhân tạo.',
-            productIds: [],
-            suggestions: [
-              { label: 'Xem giải thích chi tiết', prompt: 'Hãy giải thích chi tiết hơn câu trả lời vừa rồi' },
-              { label: 'Tư vấn giày sân 7', prompt: 'Tư vấn giày sân 7 phù hợp với tôi' }
-            ],
-            needsAdmin: false
-          }
-        : {
-            reply: 'Mình đã chọn được mẫu phù hợp; ảnh, màu và size nằm trong thẻ bên dưới.',
-            productIds: firstProductId ? [firstProductId] : [],
-            suggestions: [
-              { label: 'Kiểm tra màu và size', prompt: 'Kiểm tra màu và size còn hàng' }
-            ],
-            needsAdmin: false
-          };
+      aiPrompts.push(prompt);
+      let result;
+
+      if (prompt.includes('JSON_SCHEMA:')) {
+        const input = routerInput(prompt);
+        const knowledge = /FG và TF/i.test(input.message || '');
+        result = knowledge
+          ? {
+              intent: 'general_question',
+              needDatabase: false,
+              needWeb: true,
+              webQuery: 'FG TF football boot sole official',
+              showProducts: false,
+              responseMode: 'brief',
+              search: { query: input.message, customerNeeds: ['Phân biệt FG và TF'] }
+            }
+          : {
+              intent: 'product_recommendation',
+              needDatabase: true,
+              needWeb: false,
+              showProducts: true,
+              responseMode: 'recommend',
+              search: {
+                query: input.message,
+                categories: ['bóng đá'],
+                maxPrice: 2000000,
+                customerNeeds: ['Giày bóng đá sân 7 dưới 2 triệu'],
+                requirements: [{
+                  label: 'Sân cỏ nhân tạo',
+                  terms: ['TF', 'AS', 'cỏ nhân tạo'],
+                  scope: 'identity'
+                }],
+                excludeTerms: ['FG', 'SG'],
+                limit: 3
+              }
+            };
+      } else {
+        result = {
+          reply: 'FG thường dùng trên mặt sân cỏ tự nhiên chắc [1], còn TF dùng trên sân cỏ nhân tạo với nhiều đinh cao su nhỏ [2].',
+          citationIds: [1, 2],
+          suggestions: [
+            { label: 'Cách chọn mặt sân', prompt: 'Hướng dẫn chọn đế theo mặt sân' }
+          ]
+        };
+      }
+
       const payload = JSON.stringify({
         model: 'test-haiku',
-        usage: { input_tokens: 900, output_tokens: 90 },
+        usage: { input_tokens: 300, output_tokens: 70 },
         content: [{ type: 'text', text: JSON.stringify(result) }]
       });
       res.writeHead(200, {
@@ -83,10 +112,47 @@ test('knowledge chỉ trả text, product dùng 1 AI call rồi code dựng đ�
       res.end(payload);
     });
   });
-  await new Promise((resolve, reject) => {
-    aiStub.once('error', reject);
-    aiStub.listen(aiPort, '127.0.0.1', resolve);
+
+  const webStub = http.createServer((req, res) => {
+    webCalls += 1;
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      const payload = JSON.stringify({
+        results: [
+          {
+            title: 'FIFA official football guide',
+            url: 'https://www.fifa.com/technical/football-technology',
+            content: 'Official information about football surfaces and equipment.',
+            score: 0.9
+          },
+          {
+            title: 'Mizuno official football footwear',
+            url: 'https://www.mizuno.com/football/footwear',
+            content: 'Official football footwear and outsole information.',
+            score: 0.85
+          }
+        ],
+        usage: { credits: 1 }
+      });
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      });
+      res.end(payload);
+    });
   });
+
+  await Promise.all([
+    new Promise((resolve, reject) => {
+      aiStub.once('error', reject);
+      aiStub.listen(aiPort, '127.0.0.1', resolve);
+    }),
+    new Promise((resolve, reject) => {
+      webStub.once('error', reject);
+      webStub.listen(webPort, '127.0.0.1', resolve);
+    })
+  ]);
 
   const child = spawn(process.execPath, ['server.js'], {
     cwd: path.resolve(__dirname, '..'),
@@ -104,7 +170,13 @@ test('knowledge chỉ trả text, product dùng 1 AI call rồi code dựng đ�
       AI_API_STYLE: 'anthropic',
       AI_AUTH_MODE: 'bearer',
       AI_MESSAGES_PATH: '/v1/messages',
-      AI_COST_MODE: 'balanced'
+      AI_COST_MODE: 'balanced',
+      AI_ROUTER_ALWAYS: 'true',
+      AI_PRODUCT_FINAL_ENABLED: 'false',
+      KNOWLEDGE_WEB_ENABLED: 'true',
+      TAVILY_API_KEY: 'test-tavily-key',
+      TAVILY_API_URL: `http://127.0.0.1:${webPort}`,
+      KNOWLEDGE_OFFICIAL_DOMAINS: 'fifa.com,mizuno.com'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -112,18 +184,6 @@ test('knowledge chỉ trả text, product dùng 1 AI call rồi code dựng đ�
 
   try {
     await waitForServer(baseUrl, child);
-
-    const knowledgeResponse = await fetch(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'knowledge-cost-test', message: 'FG và TF khác nhau thế nào?' })
-    });
-    const knowledge = await knowledgeResponse.json();
-    assert.equal(knowledgeResponse.status, 200);
-    assert.equal(prompts.length, 1);
-    assert.equal(prompts[0].includes('MODULE ROUTER'), false);
-    assert.deepEqual(knowledge.products, []);
-    assert.equal(knowledge.suggestions.length, 2);
 
     const productResponse = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
@@ -135,21 +195,40 @@ test('knowledge chỉ trả text, product dùng 1 AI call rồi code dựng đ�
     });
     const product = await productResponse.json();
     assert.equal(productResponse.status, 200);
-    assert.equal(prompts.length, 2);
-    assert.equal(prompts[1].includes('MODULE ROUTER'), false);
+    assert.equal(aiPrompts.length, 1);
+    assert.ok(aiPrompts[0].includes('JSON_SCHEMA:'));
     assert.ok(product.products.length > 0);
     assert.ok(product.products[0].images.length > 0);
     assert.ok(product.products[0].variants.length > 0);
-    assert.equal(product.suggestions.length, 1);
+
+    const knowledgeResponse = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'knowledge-cost-test',
+        message: 'FG và TF khác nhau thế nào?'
+      })
+    });
+    const knowledge = await knowledgeResponse.json();
+    assert.equal(knowledgeResponse.status, 200);
+    assert.equal(aiPrompts.length, 3);
+    assert.equal(webCalls, 1);
+    assert.deepEqual(knowledge.products, []);
+    assert.equal(knowledge.sources.length, 2);
+    assert.match(knowledge.reply, /\[1\]/);
 
     const storedResponse = await fetch(`${baseUrl}/api/sessions/knowledge-cost-test`);
     const { session } = await storedResponse.json();
-    assert.equal(session.messages.at(-1).suggestions.length, 2);
+    assert.equal(session.messages.at(-1).sources.length, 2);
   } finally {
     child.kill('SIGTERM');
     if (child.exitCode === null) await once(child, 'exit');
     aiStub.closeAllConnections?.();
-    await new Promise((resolve) => aiStub.close(resolve));
+    webStub.closeAllConnections?.();
+    await Promise.all([
+      new Promise((resolve) => aiStub.close(resolve)),
+      new Promise((resolve) => webStub.close(resolve))
+    ]);
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

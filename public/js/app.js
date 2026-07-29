@@ -97,6 +97,21 @@
     const bubble = create('div', 'message-bubble', text);
     stack.append(meta, bubble);
 
+    if (role === 'assistant' && Array.isArray(options.sources) && options.sources.length) {
+      const sources = create('div', 'message-sources');
+      sources.appendChild(create('strong', 'message-sources-title', 'Nguồn chính thống'));
+      for (const source of options.sources.slice(0, 3)) {
+        const url = String(source?.url || '').trim();
+        if (!/^https?:\/\//i.test(url)) continue;
+        const link = create('a', 'message-source-link', source?.title || url);
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        sources.appendChild(link);
+      }
+      if (sources.querySelector('a')) stack.appendChild(sources);
+    }
+
     if (role === 'assistant' && Array.isArray(options.suggestions) && options.suggestions.length) {
       const followUps = create('div', 'message-follow-ups');
       for (const suggestion of options.suggestions.slice(0, 3)) {
@@ -517,7 +532,8 @@
         addMessage(message.role, message.text, {
           id: message.id,
           products: productCards,
-          suggestions: message.suggestions || []
+          suggestions: message.suggestions || [],
+          sources: message.sources || []
         });
       }
     } catch (_) {
@@ -547,7 +563,8 @@
         addMessage('assistant', result.reply, {
           id: result.messageId,
           products: result.products || [],
-          suggestions: result.suggestions || []
+          suggestions: result.suggestions || [],
+          sources: result.sources || []
         });
       } else if (!result.reply && ['human', 'waiting_admin'].includes(result.sessionStatus)) {
         showToast('Tin nhắn đã gửi đến nhân viên.');
@@ -575,7 +592,8 @@
       addMessage(message.role, message.text, {
         id: message.id,
         products: message.products || [],
-        suggestions: message.suggestions || []
+        suggestions: message.suggestions || [],
+        sources: message.sources || []
       });
     });
   }
