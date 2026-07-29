@@ -1,11 +1,11 @@
-# GHS Local Chatbot – AI hai tầng
+# GHS Local Chatbot – AI code-first tiết kiệm token
 
 Chatbot tư vấn sản phẩm Green Holding Sport có thể đọc sản phẩm trực tiếp từ Haravan API hoặc dùng `data/products.csv` làm nguồn dự phòng. AI hoạt động theo kiến trúc:
 
 ```text
-AI lần 1 nhận dạng câu hỏi
-→ Code truy vấn dữ liệu sản phẩm
-→ AI lần 2 viết câu trả lời cuối
+Code nhận dạng câu hỏi và truy vấn dữ liệu trước
+→ Haiku viết câu trả lời ngắn
+→ Chỉ câu thật sự mơ hồ mới gọi thêm AI Router
 ```
 
 ## Chức năng
@@ -19,26 +19,28 @@ AI lần 1 nhận dạng câu hỏi
 - Trang `admin.html` nhận chat trực tiếp, tìm sản phẩm theo tên/mã/SKU/Barcode, gửi tối đa 5 thẻ sản phẩm cho khách, chuyển lại cho AI và quản lý đơn nháp.
 - Không cần cài thư viện npm ngoài.
 
-## Cách AI hai tầng hoạt động
+## Cách AI tiết kiệm chi phí hoạt động
 
-### Lần gọi AI 1 – Router
+### Code Router chạy trước
 
-AI chỉ nhận câu hỏi và một ít lịch sử chat. AI trả JSON gồm:
+Code tự nhận dạng các yêu cầu phổ biến:
 
-- Ý định của khách.
-- Có cần truy vấn database hay không.
-- Tên, mã, thương hiệu, màu, size, khoảng giá cần tìm.
-- Có cần AI lần 2 viết câu trả lời hay không.
+- Bộ môn, mặt sân, loại sản phẩm.
+- Tên, mã, thương hiệu, màu, size và khoảng giá.
+- Câu hỏi kiến thức chỉ cần trả lời bằng text.
+- Câu chào, cảm ơn, chuyển nhân viên và câu cần hỏi lại.
 
-AI lần 1 **không được viết SQL, không được truy cập database và không được tự trả giá/tồn kho**.
+AI Router chỉ được gọi thêm khi câu hỏi quá mơ hồ và code không bóc tách đủ dữ kiện.
 
 ### Code truy vấn dữ liệu
 
 Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong dữ liệu đã đồng bộ bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh, nhóm sản phẩm và link đều lấy từ Haravan hoặc CSV dự phòng.
 
-### Lần gọi AI 2 – Trả lời cuối
+### Haiku trả lời cuối
 
-AI lần 2 chỉ nhận tối đa một nhóm sản phẩm đã lọc. AI dùng dữ liệu đó để trả lời tự nhiên như nhân viên tư vấn. Giao diện tự dựng thẻ ảnh, giá, màu, size và nút xem chi tiết từ database.
+Haiku chỉ nhận tối đa 3 sản phẩm đã lọc và viết câu trả lời ngắn. Với câu tư vấn thông thường, toàn bộ luồng chỉ gọi AI một lần. Giao diện tự lấy đầy đủ ảnh, màu, size, SKU, tồn kho và biến thể từ Haravan theo `productId`; những dữ liệu giao diện này không được gửi toàn bộ cho AI.
+
+Với câu hỏi kiến thức, chatbot chỉ trả lời text trong 2–4 câu và hiển thị tối đa 3 nút gợi ý hỏi tiếp. Chỉ khi khách bấm **Xem giải thích chi tiết** hoặc một gợi ý tìm sản phẩm thì hệ thống mới xử lý yêu cầu tiếp theo.
 
 Xem chi tiết tại `TWO_STAGE_AI.md`.
 
@@ -78,7 +80,7 @@ Trong cuộc trò chuyện do nhân viên hỗ trợ, mỗi tin nhắn của kh�
 4. Bấm **Chèn vào ô trả lời** để duyệt rồi gửi bằng tay.
 5. Nếu AI tìm được sản phẩm liên quan, có thể chọn **Dùng câu trả lời và sản phẩm** để chuyển sang bước duyệt thẻ sản phẩm.
 
-AI không tự chạy trong trạng thái nhân viên và không tự gửi bản nháp cho khách. Mỗi lần bấm có thể dùng luồng AI hai tầng (Router và Final); các lần bấm lại cùng nội dung có thể dùng cache hiện có.
+AI không tự chạy trong trạng thái nhân viên và không tự gửi bản nháp cho khách. Với câu hỏi rõ ràng, mỗi lần bấm chỉ gọi Haiku một lần; AI Router chỉ chạy thêm khi code không phân tích đủ. Các lần bấm lại cùng nội dung có thể dùng cache hiện có.
 
 ## Cấu hình API AI
 
@@ -121,21 +123,26 @@ AI_MESSAGES_PATH=/v1/chat/completions
 AI_AUTH_MODE=bearer
 ```
 
-Sau khi sửa `.env`, dừng bằng `Ctrl+C`, chạy lại `start-chatbot.cmd`, vào trang admin và bấm **Test API AI**. Nút kiểm tra sẽ gọi thử cả Router và AI trả lời cuối.
+Sau khi sửa `.env`, dừng bằng `Ctrl+C`, chạy lại `start-chatbot.cmd`, vào trang admin và bấm **Test API AI**. Nút kiểm tra dùng luồng code-first và gọi thử một lần AI trả lời.
 
 ## Cấu hình số token
 
 ```env
+AI_COST_MODE=balanced
 AI_ROUTER_MAX_TOKENS=240
-AI_FINAL_MAX_TOKENS=520
-AI_MAX_CANDIDATES=5
-AI_MAX_VARIANTS=10
-AI_DESCRIPTION_CHARS=650
+AI_FINAL_MAX_TOKENS=320
+AI_MAX_CANDIDATES=3
+AI_MAX_VARIANTS=4
+AI_DESCRIPTION_CHARS=260
+AI_HISTORY_MESSAGES=2
+AI_HISTORY_CHARS=220
 AI_ALWAYS_FINAL=true
 AI_CACHE_TTL_MS=1800000
 ```
 
-`AI_ALWAYS_FINAL=true` là chế độ đã chốt: sau AI Router, hệ thống gọi AI lần 2 để soạn lời đáp. Lệnh `admin` và cuộc chat đang do nhân viên xử lý không gọi AI.
+`AI_COST_MODE=balanced` áp trần an toàn ngay cả khi Render còn giữ các giới hạn cũ lớn hơn. `AI_ALWAYS_FINAL=true` vẫn dùng Haiku để viết câu trả lời tự nhiên, nhưng không bắt buộc phải gọi AI Router trước. Lệnh `admin`, câu chào, cảm ơn và cuộc chat đang do nhân viên xử lý không tự gọi AI.
+
+Mỗi request thành công ghi một dòng `[AI_USAGE]` trong Render Logs gồm model, mục đích gọi, input token, output token và kích thước prompt. Có thể dùng các dòng này để đối chiếu trực tiếp với chi phí trên Woku.
 
 ## Kết nối Haravan
 
