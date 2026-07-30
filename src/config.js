@@ -68,7 +68,7 @@ module.exports = {
     messagesPath: String(process.env.AI_MESSAGES_PATH || '/v1/messages'),
     authMode: String(process.env.AI_AUTH_MODE || 'bearer').toLowerCase(),
     anthropicVersion: String(process.env.ANTHROPIC_VERSION || '2023-06-01'),
-    routerMaxTokens: Number(process.env.AI_ROUTER_MAX_TOKENS || 240),
+    routerMaxTokens: Number(process.env.AI_ROUTER_MAX_TOKENS || 500),
     finalMaxTokens: Number(process.env.AI_FINAL_MAX_TOKENS || process.env.AI_MAX_TOKENS || 520),
     timeoutMs: Number(process.env.AI_TIMEOUT_MS || 45000),
     maxCandidates: Number(process.env.AI_MAX_CANDIDATES || 5),
