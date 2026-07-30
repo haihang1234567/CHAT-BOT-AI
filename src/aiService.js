@@ -1,5 +1,12 @@
 const crypto = require('crypto');
 const { normalizeText, canonicalSearchText } = require('./productService');
+const { expandChatSlang } = require('./chatSlangNormalizer');
+const LocalChatEngine = require('./localChatEngine');
+
+const FINAL_ADVICE_FEW_SHOTS = [
+  'Ví dụ recommend: ROUTE={"responseMode":"recommend","search":{"customerNeeds":["chạy đường nhựa","êm chân"],"maxPrice":1500000}}; DATABASE_RESULTS có A đế EVA 1.290.000đ và B đế cao su 1.450.000đ → reply: "Mình nghiêng về A vì đế EVA và mức giá 1.290.000đ khớp nhu cầu êm chân, dưới 1,5 triệu của bạn."',
+  'Ví dụ compare: ROUTE={"responseMode":"compare"}; DATABASE_RESULTS có A 1.290.000đ, đế EVA và B 1.450.000đ, đế cao su → reply phải nêu rõ chênh lệch giá và vật liệu đế; không viết "cả hai đều tốt".'
+].join('\n');
 
 const INTENTS = new Set([
   'greeting',
@@ -82,7 +89,12 @@ class AiService {
   constructor(config, productService) {
     this.config = config;
     this.productService = productService;
+    this.localChatEngine = new LocalChatEngine(productService);
     this.cache = new Map();
+  }
+
+  asksAdvice(message) {
+    return this.localChatEngine.flags(expandChatSlang(message)).asksAdvice;
   }
 
   isConfigured() {
@@ -368,7 +380,7 @@ class AiService {
   }
 
   parsePriceFilters(message) {
-    const q = normalizeText(message);
+    const q = normalizeText(expandChatSlang(message));
     const amount = (raw, unit) => {
       const value = Number(String(raw).replace(',', '.'));
       if (!Number.isFinite(value)) return null;
@@ -404,7 +416,7 @@ class AiService {
   }
 
   codeShowProducts(message) {
-    const q = normalizeText(message);
+    const q = normalizeText(expandChatSlang(message));
     const textOnly = [
       /\b(chieu dai ban chan|do dai ban chan|ban chan .{0,20}\d+(?:\.\d+)?\s*cm)\b/,
       /\b(\d+(?:\.\d+)?\s*cm .{0,30}(size|co nao|doi nao)|size nao|chon size|quy doi size)\b/,
@@ -423,7 +435,7 @@ class AiService {
   }
 
   isKnowledgeQuestion(message) {
-    const q = normalizeText(message);
+    const q = normalizeText(expandChatSlang(message));
     if (this.codeShowProducts(message) === true) return false;
     return [
       /\b(la gi|tai sao|vi sao|khac nhau|giai thich|kien thuc|quy tac|luat choi)\b/,
@@ -434,7 +446,7 @@ class AiService {
   }
 
   needsProductKnowledge(message, history = []) {
-    const q = normalizeText(message);
+    const q = normalizeText(expandChatSlang(message));
     const hasContextReference = /\b(mau nay|san pham nay|doi nay|cai nay|mau tren|san pham tren|doi tren|cac mau tren|nhung mau tren|mau vua goi y|cac mau vua goi y|cac san pham vua goi y)\b/.test(q);
     const hasContextProduct = history.some((item) => (
       (Array.isArray(item?.contextProductIds) && item.contextProductIds.length)
@@ -470,13 +482,14 @@ class AiService {
       || Boolean(search.inStockOnly);
     if (hasCodeSignals) return false;
 
-    const q = canonicalSearchText(message);
+    const q = canonicalSearchText(expandChatSlang(message));
     const hasCommerceWords = /\b(tim|mua|giay|vot|bong|ao|quan|balo|tui|tat|size|mau|gia|san pham)\b/.test(q);
     return !hasCommerceWords;
   }
 
   codeSearchRules(message) {
-    const q = canonicalSearchText(message);
+    const expandedMessage = expandChatSlang(message);
+    const q = canonicalSearchText(expandedMessage);
     const categoryRules = [
       ['giay bong chuyen', /\b(giay bong chuyen|bong chuyen)\b/],
       ['bong da', /\b(giay bong da|giay da bong|giay (?:da )?san (?:5|7|11)|bong da|san co nhan tao|futsal)\b/],
@@ -517,7 +530,7 @@ class AiService {
     if (colorText && /(?:^|\s)(?:be|beige)(?:$|\s)/.test(colorText)) colors.push('be');
 
     const sizes = [];
-    for (const match of String(message || '').matchAll(/(?:size|sz|kích thước|kich thuoc)\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/gi)) {
+    for (const match of String(expandedMessage || '').matchAll(/(?:size|sz|kích thước|kich thuoc)\s*[:=-]?\s*([0-9]+(?:[.,][0-9]+)?)/gi)) {
       sizes.push(match[1].replace(',', '.'));
     }
 
@@ -872,12 +885,37 @@ class AiService {
     };
   }
 
+  ambiguityQuestion(ambiguity) {
+    const options = cleanList(ambiguity?.options, 3, 80);
+    if (!options.length) return '';
+    const choices = options.map((option) => `“${option}”`);
+    const joined = choices.length === 1
+      ? choices[0]
+      : `${choices.slice(0, -1).join(', ')} hay ${choices.at(-1)}`;
+    return `Mình chưa muốn đoán sai. Ý bạn là ${joined} nhỉ?`;
+  }
+
+  applyAmbiguityClarification(route, ambiguities = []) {
+    if (!ambiguities.length || route?.showProducts === true) return route;
+    const clarificationQuestion = this.ambiguityQuestion(ambiguities[0]);
+    if (!clarificationQuestion) return route;
+    return {
+      ...route,
+      showProducts: false,
+      needFinalAi: false,
+      responseMode: 'clarify',
+      clarificationQuestion,
+      ambiguities,
+      consultation: { ready: false, pendingField: 'ambiguity' }
+    };
+  }
+
   finalizeProductRoute(route, message, history = []) {
     const contextual = this.applyConversationContext(route, message, history);
     const contextualQuery = contextual?.search?.query || message;
     const merged = this.mergeCodeRules(contextual, contextualQuery);
     const resolution = this.catalogResolution(contextualQuery);
-    return this.applyConsultation({
+    const consulted = this.applyConsultation({
       ...merged,
       corrections: resolution.corrections,
       ambiguities: resolution.ambiguous,
@@ -886,6 +924,7 @@ class AiService {
         query: resolution.query || merged.search.query
       }
     }, message);
+    return this.applyAmbiguityClarification(consulted, resolution.ambiguous);
   }
 
   applyCodeClarification(route, message, rules = this.codeSearchRules(message)) {
@@ -956,8 +995,9 @@ class AiService {
   }
 
   fallbackRoute(message, history = [], warning = '') {
-    const resolution = this.catalogResolution(message);
-    const analysisMessage = resolution.query || message;
+    const expandedMessage = expandChatSlang(message);
+    const resolution = this.catalogResolution(expandedMessage);
+    const analysisMessage = resolution.query || expandedMessage;
     const q = normalizeText(analysisMessage);
     const compactHistory = this.compactHistory(history, {
       limit: this.config.routerHistoryMessages,
@@ -1045,7 +1085,7 @@ class AiService {
       codeRules
     );
     return {
-      ...this.finalizeProductRoute(normalized, message, history),
+      ...this.finalizeProductRoute(normalized, expandedMessage, history),
       corrections: resolution.corrections,
       ambiguities: resolution.ambiguous,
       _source: 'code-router',
@@ -1173,10 +1213,17 @@ class AiService {
       'search_by_code', 'search_product', 'product_detail',
       'product_recommendation', 'compare_products', 'create_order'
     ].includes(intent);
+    const rawResponseMode = ['brief', 'detail', 'recommend', 'compare', 'order', 'clarify'].includes(String(raw?.responseMode))
+      ? String(raw.responseMode)
+      : 'brief';
+    const asksAdvice = this.asksAdvice(message);
+    const responseMode = asksAdvice && rawResponseMode === 'brief' ? 'recommend' : rawResponseMode;
     const neverNeedsFinalAi = ['greeting', 'thanks', 'admin_handoff'].includes(intent)
-      || String(raw?.responseMode) === 'clarify';
+      || responseMode === 'clarify';
     const isKnowledge = intent === 'general_question';
     const isProductFlow = needDatabaseByIntent;
+    const needsAdviceFinal = isProductFlow
+      && (asksAdvice || ['recommend', 'compare'].includes(responseMode));
 
     const normalized = {
       intent,
@@ -1188,15 +1235,13 @@ class AiService {
         : isKnowledge
           ? true
           : isProductFlow
-            ? Boolean(this.config.productFinalEnabled)
+            ? Boolean(this.config.productFinalEnabled || needsAdviceFinal)
             : Boolean(raw?.needFinalAi),
       showProducts: typeof raw?.showProducts === 'boolean'
         ? raw.showProducts
         : ['search_by_code', 'search_product', 'product_recommendation', 'compare_products', 'create_order'].includes(intent),
       needsAdmin: Boolean(raw?.needsAdmin) || intent === 'admin_handoff',
-      responseMode: ['brief', 'detail', 'recommend', 'compare', 'order', 'clarify'].includes(String(raw?.responseMode))
-        ? String(raw.responseMode)
-        : 'brief',
+      responseMode,
       clarificationQuestion: cleanString(raw?.clarificationQuestion, 240),
       search: {
         query: cleanString(search.query || message, 500),
@@ -1233,7 +1278,8 @@ class AiService {
   async route(message, history = [], options = {}) {
     if (!this.isConfigured()) return null;
 
-    const resolution = this.catalogResolution(message);
+    const expandedMessage = expandChatSlang(message);
+    const resolution = this.catalogResolution(expandedMessage);
     const compactHistory = this.compactHistory(history, {
       limit: this.config.routerHistoryMessages,
       maxChars: this.config.routerHistoryChars
@@ -1250,7 +1296,7 @@ class AiService {
     const cached = this.readCache(key);
     if (cached) return cached;
     const localRoute = this.fallbackRoute(message, history);
-    if (!options.forceAi && !this.shouldUseAiRouter(message, localRoute)) {
+    if (!options.forceAi && !this.shouldUseAiRouter(expandedMessage, localRoute)) {
       this.writeCache(key, localRoute);
       return localRoute;
     }
@@ -1281,7 +1327,11 @@ class AiService {
       result = this.fallbackRoute(message, history, warning);
     } else {
       result = {
-        ...this.finalizeProductRoute(this.normalizeRoute(parsed, message), message, history),
+        ...this.finalizeProductRoute(
+          this.normalizeRoute(parsed, expandedMessage),
+          expandedMessage,
+          history
+        ),
         corrections: resolution.corrections,
         ambiguities: resolution.ambiguous,
         _source: 'ai-router'
@@ -1296,6 +1346,11 @@ class AiService {
       'Bạn là nhân viên tư vấn Green Holding Sport, trả lời tự nhiên như người thật.',
       'Backend đã phân tích câu hỏi và truy vấn dữ liệu bằng code; hãy viết câu trả lời cuối thật ngắn gọn.',
       'Đối chiếu customerNeeds, requirements, preferences, excludeTerms và ngân sách trong ROUTE.',
+      'Nếu asksAdvice=true mà ROUTE.responseMode=brief, phải xử lý như responseMode=recommend.',
+      'ROUTE.responseMode=recommend: phải nói rõ “chọn X vì Y”, trong đó Y gắn trực tiếp với customerNeeds, requirements hoặc preferences và có bằng chứng trong DATABASE_RESULTS.',
+      'Không recommend khi DATABASE_RESULTS không có căn cứ cho nhu cầu của khách; khi đó nói rõ dữ liệu nào còn thiếu.',
+      'ROUTE.responseMode=compare: phải nêu 2-3 khác biệt thực sự có trong DATABASE_RESULTS như giá, chất liệu, công nghệ đế, trọng lượng hoặc mức phù hợp bộ môn/mặt sân.',
+      'Không so sánh chung chung kiểu “mỗi sản phẩm đều tốt” và không biến phần so sánh thành danh sách tên sản phẩm khô khan.',
       'Thông tin sản phẩm chỉ được lấy từ DATABASE_RESULTS. Không bịa giá, tồn kho, màu, size, mã, công nghệ hoặc chính sách.',
       'Không gọi một sản phẩm là phù hợp nếu tên, loại, mô tả hoặc biến thể mâu thuẫn với điều kiện bắt buộc của khách.',
       'Không có sản phẩm đáp ứng đủ điều kiện thì nói rõ và để productIds=[]. Không chọn gần đúng để đủ số lượng.',
@@ -1307,6 +1362,8 @@ class AiService {
       'Không được trả productId không tồn tại trong DATABASE_RESULTS.',
       'Tạo tối đa 3 suggestions ngắn để khách hỏi tiếp. Với câu kiến thức nên có “Xem giải thích chi tiết” và một gợi ý tìm sản phẩm; với câu sản phẩm nên gợi ý kiểm tra màu/size hoặc so sánh.',
       'Mỗi suggestion gồm label hiển thị và prompt đầy đủ để gửi lại khi khách bấm.',
+      'VÍ DỤ VĂN PHONG (chỉ để định hình cách trả lời, không được sao chép dữ liệu ví dụ):',
+      FINAL_ADVICE_FEW_SHOTS,
       'Trả đúng JSON, không markdown:',
       '{"reply":"...","productIds":["..."],"suggestions":[{"label":"...","prompt":"..."}],"needsAdmin":false}'
     ].join('\n');
@@ -1352,9 +1409,13 @@ class AiService {
   async answer(message, route, candidates = [], history = [], options = {}) {
     if (!this.isConfigured()) return null;
 
-    const limits = this.answerLimits(message, route);
+    const asksAdvice = this.asksAdvice(message);
+    const effectiveRoute = asksAdvice && route?.responseMode === 'brief'
+      ? { ...route, responseMode: 'recommend', needFinalAi: true }
+      : route;
+    const limits = this.answerLimits(message, effectiveRoute);
     const limitedCandidates = candidates.slice(0, limits.maxProducts);
-    const key = this.finalCacheKey(message, route, limitedCandidates, history);
+    const key = this.finalCacheKey(message, effectiveRoute, limitedCandidates, history);
     const cached = this.readCache(key);
     if (cached) return cached;
 
@@ -1368,7 +1429,8 @@ class AiService {
     });
     const payload = {
       customerMessage: cleanString(message, 1500),
-      route,
+      asksAdvice,
+      route: effectiveRoute,
       recentHistory: this.compactHistory(history, {
         limit: limits.historyMessages,
         maxChars: limits.historyChars
@@ -1391,19 +1453,19 @@ class AiService {
       if (this.looksLikeRoleConflict(text)) {
         const warning = `AI Final đang dùng persona Claude Code; đã dùng câu trả lời bằng code. Phản hồi AI: ${text.slice(0, 220)}`;
         console.warn(warning);
-        result = this.fallbackFinal(message, route, limitedCandidates, warning);
+        result = this.fallbackFinal(message, effectiveRoute, limitedCandidates, warning);
       } else if (text) {
         result = {
           reply: cleanString(text, 3500),
-          productIds: route?.showProducts === false
+          productIds: effectiveRoute?.showProducts === false
             ? []
             : limitedCandidates.slice(0, 3).map((item) => item.id),
-          suggestions: this.fallbackSuggestions(message, route, limitedCandidates),
+          suggestions: this.fallbackSuggestions(message, effectiveRoute, limitedCandidates),
           needsAdmin: false,
           _source: 'ai-final-text'
         };
       } else {
-        result = this.fallbackFinal(message, route, limitedCandidates, 'AI Final không trả nội dung.');
+        result = this.fallbackFinal(message, effectiveRoute, limitedCandidates, 'AI Final không trả nội dung.');
       }
     } else {
       const allowedIds = new Set(limitedCandidates.map((item) => String(item.id)));
@@ -1412,14 +1474,14 @@ class AiService {
         : [];
       result = {
         reply: cleanString(parsed.reply, 3500),
-        productIds: route?.showProducts === false
+        productIds: effectiveRoute?.showProducts === false
           ? []
           : Array.isArray(parsed.productIds)
             ? productIds
             : limitedCandidates.slice(0, 3).map((item) => item.id),
         suggestions: cleanSuggestions(parsed.suggestions).length
           ? cleanSuggestions(parsed.suggestions)
-          : this.fallbackSuggestions(message, route, limitedCandidates),
+          : this.fallbackSuggestions(message, effectiveRoute, limitedCandidates),
         needsAdmin: Boolean(parsed.needsAdmin),
         _source: 'ai-final'
       };

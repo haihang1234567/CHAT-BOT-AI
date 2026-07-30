@@ -38,13 +38,18 @@ function routerInput(prompt) {
   return JSON.parse(prompt.slice(start + marker.length, end));
 }
 
-test('product chỉ gọi AI phân tích một lần; knowledge tìm web rồi tổng hợp có nguồn', async () => {
+test('product tư vấn gọi router + final có lý do; knowledge tìm web rồi tổng hợp có nguồn', async () => {
   const [port, aiPort, webPort] = await Promise.all([
     availablePort(),
     availablePort(),
     availablePort()
   ]);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghs-cost-flow-'));
+  const productCsvPath = path.join(tempDir, 'products.csv');
+  fs.writeFileSync(productCsvPath, [
+    'Mã sản phẩm,Mã biến thể,Url,Tên,Mô tả,Trích dẫn,Hãng,Loại sản phẩm,Tag,Thuộc tính 1,Giá trị thuộc tính 1,Thuộc tính 2,Giá trị thuộc tính 2,Mã phiên bản sản phẩm,Số lượng tồn kho,Giá,Giá so sánh,Link hình',
+    'football-tf,football-tf-v1,giay-bong-da-mizuno-sala-tf,Giày Bóng Đá Mizuno Sala TF,Đế TF phù hợp sân cỏ nhân tạo 5-7 người,Form êm cho sân 7,Mizuno,Giày Bóng Đá,"bóng đá TF sân 7",Màu,Đen,Size,42,SP-TF-42,5,1499000,1700000,https://cdn.example.com/football-tf.jpg'
+  ].join('\n'));
   const aiPrompts = [];
   let webCalls = 0;
 
@@ -90,6 +95,14 @@ test('product chỉ gọi AI phân tích một lần; knowledge tìm web rồi t
                 limit: 3
               }
             };
+      } else if (prompt.includes('QUY TẮC MODULE FINAL:')) {
+        result = {
+          reply: 'Mình chọn mẫu giày TF trong danh sách vì phù hợp sân cỏ nhân tạo 5–7 người và giá vẫn dưới 2 triệu.',
+          suggestions: [
+            { label: 'Kiểm tra size', prompt: 'Kiểm tra size còn hàng của mẫu vừa chọn' }
+          ],
+          needsAdmin: false
+        };
       } else {
         result = {
           reply: 'FG thường dùng trên mặt sân cỏ tự nhiên chắc [1], còn TF dùng trên sân cỏ nhân tạo với nhiều đinh cao su nhỏ [2].',
@@ -161,6 +174,7 @@ test('product chỉ gọi AI phân tích một lần; knowledge tìm web rồi t
       PORT: String(port),
       STORE_PATH: path.join(tempDir, 'store.json'),
       PRODUCT_SOURCE: 'csv',
+      PRODUCT_CSV_PATH: productCsvPath,
       HARAVAN_ACCESS_TOKEN: '',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${aiPort}`,
       ANTHROPIC_AUTH_TOKEN: 'test-token',
@@ -195,8 +209,10 @@ test('product chỉ gọi AI phân tích một lần; knowledge tìm web rồi t
     });
     const product = await productResponse.json();
     assert.equal(productResponse.status, 200);
-    assert.equal(aiPrompts.length, 1);
+    assert.equal(aiPrompts.length, 2);
     assert.ok(aiPrompts[0].includes('JSON_SCHEMA:'));
+    assert.ok(aiPrompts[1].includes('QUY TẮC MODULE FINAL:'));
+    assert.match(product.reply, /vì/i);
     assert.ok(product.products.length > 0);
     assert.ok(product.products[0].images.length > 0);
     assert.ok(product.products[0].variants.length > 0);
@@ -211,7 +227,7 @@ test('product chỉ gọi AI phân tích một lần; knowledge tìm web rồi t
     });
     const knowledge = await knowledgeResponse.json();
     assert.equal(knowledgeResponse.status, 200);
-    assert.equal(aiPrompts.length, 3);
+    assert.equal(aiPrompts.length, 4);
     assert.equal(webCalls, 1);
     assert.deepEqual(knowledge.products, []);
     assert.equal(knowledge.sources.length, 2);

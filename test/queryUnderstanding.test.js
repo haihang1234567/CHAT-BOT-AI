@@ -278,3 +278,42 @@ test('nút hỏi tiếp về các mẫu vừa gợi ý giữ đúng productId tr
   assert.equal(route.needDatabase, true);
   assert.equal(ai.shouldUseAiRouter('Kiểm tra màu và size còn hàng của các mẫu vừa gợi ý', route), false);
 });
+
+test('từ sửa chính tả có nhiều khả năng thì hỏi lại thay vì tự chọn sản phẩm', () => {
+  const products = new ProductService('', 'https://shop.example', { loadCsv: false });
+  products.replaceProducts([
+    {
+      id: 'mizuno-shoe',
+      name: 'Giày Mizuno Wave',
+      brand: 'Mizuno',
+      type: 'Giày Chạy Bộ',
+      images: [],
+      variants: [variant('mizuno-shoe-v1')]
+    },
+    {
+      id: 'mizumi-shoe',
+      name: 'Giày Mizumi Run',
+      brand: 'Mizumi',
+      type: 'Giày Chạy Bộ',
+      images: [],
+      variants: [variant('mizumi-shoe-v1')]
+    }
+  ]);
+  const ai = new AiService({
+    productFinalEnabled: false,
+    maxCandidates: 5
+  }, products);
+
+  const route = ai.fallbackRoute('mizu');
+  const results = products.queryByPlan(route, 'mizu', 5);
+  const answer = ai.fallbackFinal('mizu', route, results);
+
+  assert.equal(route.ambiguities.length, 1);
+  assert.deepEqual(route.ambiguities[0].options.sort(), ['mizumi', 'mizuno']);
+  assert.equal(route.responseMode, 'clarify');
+  assert.equal(route.showProducts, false);
+  assert.equal(route.needFinalAi, false);
+  assert.match(route.clarificationQuestion, /mizumi.*hay.*mizuno|mizuno.*hay.*mizumi/i);
+  assert.deepEqual(answer.productIds, []);
+  assert.equal(answer.reply, route.clarificationQuestion);
+});
