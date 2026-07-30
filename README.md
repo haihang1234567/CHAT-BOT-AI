@@ -51,15 +51,28 @@ Router AI đọc câu hỏi và tách thành JSON:
 - Điều kiện bắt buộc, điều kiện ưu tiên và điều cần loại trừ.
 - Câu hỏi kiến thức cần tìm web hoặc câu hỏi còn thiếu dữ kiện cần hỏi lại.
 
+Router đọc cả lịch sử và trạng thái đang chờ để hiểu câu trả lời ngắn như `pcik
+đi`, `2tr`, `bao nhiêu cũng được`. Quan hệ giữa loại hàng và bộ môn, lỗi gõ theo
+ngữ cảnh cùng các ví dụ hội thoại được nạp từ `training/router-policy.json`.
+Nếu quyết định đầu tiên lặp câu hỏi cũ hoặc ghép sai loại hàng với bộ môn, Haiku
+chỉ khi đó mới tự phân tích lại một lần.
+
 Đầu ra ngắn và có giới hạn token. Câu chào, cảm ơn, chuyển nhân viên và mã sản phẩm chính xác vẫn được code xử lý để tránh gọi AI không cần thiết.
+
+Để bổ sung cách nói mới, xem `training/README.md`. Đây là dữ liệu huấn luyện
+router hội thoại; còn `knowledge/` chỉ chứa kiến thức thể thao đã kiểm chứng.
 
 ### Code truy vấn dữ liệu
 
 Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong dữ liệu đã đồng bộ bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh, nhóm sản phẩm và link đều lấy từ Haravan hoặc CSV dự phòng.
 
-### Sản phẩm không gọi AI lần hai
+### Tối ưu số lần gọi AI cho sản phẩm
 
 Sau khi Haiku phân tích, code lọc sản phẩm theo JSON rồi tự dựng câu trả lời và thẻ. Giao diện lấy đầy đủ ảnh, màu, size, SKU, tồn kho và biến thể từ Haravan theo `productId`; những dữ liệu này không được gửi lại cho AI. Vì vậy câu hỏi sản phẩm thông thường chỉ tốn một lần gọi Haiku.
+
+Riêng câu khách yêu cầu tư vấn có lý do hoặc so sánh, hệ thống gọi thêm final AI
+với tối đa 3 kết quả đã rút gọn. Lần sửa router chỉ phát sinh khi quyết định đầu
+bị lặp hoặc mâu thuẫn, không chạy ở mọi câu hỏi.
 
 ### Kiến thức phải có nguồn
 
@@ -161,7 +174,7 @@ Sau khi sửa `.env`, dừng bằng `Ctrl+C`, chạy lại `start-chatbot.cmd`, 
 
 ```env
 AI_COST_MODE=balanced
-AI_ROUTER_MAX_TOKENS=220
+AI_ROUTER_MAX_TOKENS=500
 AI_FINAL_MAX_TOKENS=320
 AI_MAX_CANDIDATES=3
 CHAT_PRODUCT_PAGE_SIZE=5
