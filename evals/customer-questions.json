@@ -56,6 +56,47 @@
         "maxPrice": 1500000
       },
       "note": "Sửa gần đúng bằng từ vựng lấy từ danh mục Haravan."
+    },
+    {
+      "id": "teencode-size-stock-001",
+      "question": "sp SP001848 còn sz 42 ko shop",
+      "expected": {
+        "normalizedMessageIncludes": ["sản phẩm", "size 42", "không"],
+        "preserveCodes": ["SP001848"],
+        "intent": "product_detail"
+      },
+      "note": "Mở rộng teencode nhưng giữ nguyên mã SKU/sản phẩm."
+    },
+    {
+      "id": "teencode-running-advice-001",
+      "question": "mk muốn mua giày chạy bộ êm chân tầm 1tr5, tv giúp vs",
+      "expected": {
+        "intent": "product_recommendation",
+        "responseMode": "recommend",
+        "maxPriceAround": 1875000,
+        "replyMustIncludeAny": ["vì", "phù hợp"]
+      },
+      "note": "AI hiểu teencode và tư vấn có lý do thay vì liệt kê khô."
+    },
+    {
+      "id": "compare-concrete-criteria-001",
+      "question": "so sánh 2 mẫu giày chạy bộ trên giúp mình",
+      "expected": {
+        "intent": "compare_products",
+        "responseMode": "compare",
+        "replyMustIncludeAny": ["giá", "đế", "chất liệu", "trọng lượng"]
+      },
+      "note": "So sánh phải dựa trên tiêu chí có thật trong dữ liệu."
+    },
+    {
+      "id": "catalog-ambiguity-clarify-001",
+      "question": "mizu",
+      "expected": {
+        "responseMode": "clarify",
+        "showProducts": false,
+        "clarificationUsesCatalogOptions": true
+      },
+      "note": "Từ gần đúng có nhiều lựa chọn phải hỏi lại, không tự đoán."
     }
   ]
 }

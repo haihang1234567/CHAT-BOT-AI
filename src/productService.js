@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { SLANG_EXPANSION_TOKENS } = require('./chatSlangNormalizer');
 
 
 function forEachCsvObject(input, callback) {
@@ -310,7 +311,7 @@ class ProductService {
       ];
       for (const field of identityFields) {
         for (const token of canonicalSearchText(field).split(' ')) {
-          if (token.length >= 4 && !/\d/.test(token)) this.catalogVocabulary.add(token);
+          if (token.length >= 3 && !/\d/.test(token)) this.catalogVocabulary.add(token);
         }
       }
     }
@@ -342,19 +343,22 @@ class ProductService {
     const ambiguous = [];
     const protectedWords = new Set([
       'admin', 'anh', 'ban', 'bao', 'cho', 'con', 'duoi', 'gia', 'hang',
-      'khong', 'mau', 'muon', 'nao', 'size', 'tham', 'them', 'tren', 'xem'
+      'khong', 'mau', 'muon', 'nao', 'size', 'tham', 'them', 'tren', 'xem',
+      ...SLANG_EXPANSION_TOKENS
     ]);
     const correctedTokens = canonical.split(' ').map((token) => {
+      const exactCode = normalizeText(token).replace(/\s/g, '');
       if (
-        token.length < 4
+        token.length < 3
         || /\d/.test(token)
+        || this.codeIndex.has(exactCode)
         || protectedWords.has(token)
         || this.catalogVocabulary.has(token)
       ) return token;
 
       const ranked = [...this.catalogVocabulary]
         .map((candidate) => {
-          const prefix = candidate.startsWith(token) && token.length >= 4;
+          const prefix = candidate.startsWith(token) && token.length >= 3;
           return {
             candidate,
             distance: prefix ? Math.min(1, candidate.length - token.length) : editDistance(token, candidate),
