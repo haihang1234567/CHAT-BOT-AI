@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { normalizeText, canonicalSearchText } = require('./productService');
 const { expandChatSlang } = require('./chatSlangNormalizer');
 const LocalChatEngine = require('./localChatEngine');
+const { buildRouterTrainingPrompt } = require('./routerTraining');
 
 const FINAL_ADVICE_FEW_SHOTS = [
   'Ví dụ recommend: ROUTE={"responseMode":"recommend","search":{"customerNeeds":["chạy đường nhựa","êm chân"],"maxPrice":1500000}}; DATABASE_RESULTS có A đế EVA 1.290.000đ và B đế cao su 1.450.000đ → reply: "Mình nghiêng về A vì đế EVA và mức giá 1.290.000đ khớp nhu cầu êm chân, dưới 1,5 triệu của bạn."',
@@ -22,6 +23,7 @@ const INTENTS = new Set([
   'general_question',
   'unknown'
 ]);
+const FLEXIBLE_FIELDS = new Set(['budget', 'brand', 'color', 'size']);
 
 function cleanString(value, maxLength = 250) {
   return String(value ?? '').trim().slice(0, maxLength);
@@ -36,6 +38,10 @@ function cleanPrice(value) {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(String(value).replace(/[^0-9.-]/g, ''));
   return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
+}
+
+function cleanFlexibleFields(value) {
+  return cleanList(value, 4, 20).filter((field) => FLEXIBLE_FIELDS.has(field));
 }
 
 function cleanNeedGroups(value, maxItems = 8, maxTerms = 8) {
@@ -263,7 +269,8 @@ class AiService {
       requirements: cleanNeedGroups(search.requirements, 5, 5),
       preferences: cleanNeedGroups(search.preferences, 5, 5),
       minPrice: cleanPrice(search.minPrice),
-      maxPrice: cleanPrice(search.maxPrice)
+      maxPrice: cleanPrice(search.maxPrice),
+      flexibleFields: cleanFlexibleFields(search.flexibleFields)
     };
   }
 
@@ -292,6 +299,8 @@ class AiService {
   buildRouterSystemPrompt() {
     return [
       'Bạn phân tích ý định cho chatbot thể thao Green Holding Sport và chỉ trả JSON.',
+      'Bạn là bộ não điều khiển hội thoại: đọc MESSAGE, NORMALIZED_MESSAGE, HISTORY và CONVERSATION_STATE rồi tự quyết định hiểu gì, hỏi gì hoặc khi nào truy vấn sản phẩm.',
+      'Code chỉ xác thực JSON và truy vấn kho sau quyết định của bạn; không dựa vào câu hỏi mặc định của code để thay bạn hiểu khách.',
       'Tách rõ hai nhánh: tìm/tư vấn sản phẩm và hỏi kiến thức.',
       'Với sản phẩm, suy luận đầy đủ khách cần gì: bộ môn, loại hàng, mục đích, môi trường/mặt sân, đặc điểm người dùng, hãng, size, màu, ngân sách và tồn kho.',
       'requirements là điều kiện bắt buộc; preferences là ưu tiên. Không tự hạ điều kiện bắt buộc để lấy sản phẩm gần đúng.',
@@ -300,17 +309,22 @@ class AiService {
       'Với câu hỏi kiến thức, đặt intent=general_question, needWeb=true, showProducts=false và viết webQuery ngắn gọn để tìm nguồn chính thống.',
       'Không tự trả lời kiến thức trong bước này. Backend sẽ tìm nguồn rồi mới gọi AI tổng hợp.',
       'Nếu câu hỏi thiếu thông tin có thể làm chọn sai sản phẩm, responseMode=clarify và hỏi đúng một câu.',
+      'consultation.ready=true chỉ khi đã đủ dữ kiện thiết yếu; nếu chưa đủ, đặt pendingField và clarificationQuestion tự nhiên, đúng loại sản phẩm.',
+      'Không đưa ví dụ bộ môn không dùng loại sản phẩm đó. Vợt không dùng cho bóng đá, chạy bộ, bóng chuyền hoặc bóng rổ.',
       'Không bắt buộc hỏi mọi thông tin. Nếu khách đã nêu loại sản phẩm, bộ môn và ít nhất một tiêu chí lọc như ngân sách, hãng, size hoặc mục đích thì có thể showProducts=true.',
       'Riêng giày bóng đá phải biết mặt sân trước khi showProducts=true.',
-      'Hiểu từ viết tắt và lỗi chính tả dựa trên NORMALIZED_MESSAGE; không tự sửa mã sản phẩm, SKU, Barcode hoặc size.',
+      'Hiểu lỗi gõ đảo ký tự và từ viết tắt theo ngữ cảnh hội thoại, kể cả khi NORMALIZED_MESSAGE chưa sửa được; không tự sửa mã sản phẩm, SKU, Barcode hoặc size.',
       'Nếu CONVERSATION_STATE.pendingField có giá trị, MESSAGE là câu trả lời cho câu hỏi đang chờ. Phải hiểu MESSAGE theo câu hỏi gần nhất trong HISTORY, kể cả khi khách chỉ trả lời rất ngắn.',
       'Ví dụ pendingField=budget thì “2tr”, “2 triệu”, “tầm hai triệu” đều là thông tin ngân sách; đổi thành VND nguyên và không hỏi lại ngân sách.',
+      'Nếu khách trả lời “bao nhiêu cũng được”, “hãng nào cũng được”, “màu nào cũng được” hoặc cách nói tương đương, thêm field tương ứng vào search.flexibleFields, coi field đó đã được trả lời và tuyệt đối không hỏi lại.',
       'Giữ lại các nhu cầu đã có trong CONVERSATION_STATE, bổ sung dữ kiện mới rồi quyết định đã đủ để tìm sản phẩm hay chưa.',
       'Không lặp lại clarificationQuestion cũ khi MESSAGE đã cung cấp được pendingField. Nếu thật sự chưa hiểu, hãy hỏi lại tự nhiên và nêu ví dụ phù hợp.',
       'Khi không có pendingField, chỉ dùng HISTORY nếu khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý” hoặc đang tiếp tục nhu cầu trước đó.',
       'Giá đổi thành VND nguyên. Không viết SQL, không bịa dữ liệu và không thêm trường ngoài schema.',
+      'BỘ KIẾN THỨC VÀ VÍ DỤ ĐÃ DUYỆT:',
+      buildRouterTrainingPrompt(),
       'JSON_SCHEMA:',
-      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
+      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","consultation":{"ready":true,"pendingField":""},"search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"flexibleFields":["budget"],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
     ].join('\n');
   }
 
@@ -413,6 +427,20 @@ class AiService {
       }
     }
     return { minPrice, maxPrice };
+  }
+
+  flexibleFields(message) {
+    const q = normalizeText(expandChatSlang(message));
+    const fields = [];
+    if (/\b(bao nhieu|gia nao|tam nao) cung duoc\b|\bkhong (?:gioi han ngan sach|quan trong gia)\b/.test(q)) {
+      fields.push('budget');
+    }
+    if (/\bhang nao cung duoc\b|\bkhong (?:can hang|quan trong thuong hieu)\b/.test(q)) {
+      fields.push('brand');
+    }
+    if (/\bmau nao cung duoc\b|\bkhong quan trong mau\b/.test(q)) fields.push('color');
+    if (/\bsize nao cung duoc\b|\bchua biet size\b/.test(q)) fields.push('size');
+    return fields;
   }
 
   codeShowProducts(message) {
@@ -622,6 +650,7 @@ class AiService {
       requirements,
       preferences,
       excludeTerms: uniqueStrings(excludeTerms),
+      flexibleFields: this.flexibleFields(message),
       minPrice,
       maxPrice,
       inStockOnly: /\b(con hang|co hang|san pham san co)\b/.test(q),
@@ -703,6 +732,10 @@ class AiService {
       requirements: uniqueNeedGroups(groups(base.requirements, current.requirements)),
       preferences: uniqueNeedGroups(groups(base.preferences, current.preferences)),
       excludeTerms: uniqueStrings(groups(base.excludeTerms, current.excludeTerms)),
+      flexibleFields: cleanFlexibleFields([
+        ...(base.flexibleFields || []),
+        ...(current.flexibleFields || [])
+      ]),
       minPrice: current.minPrice !== null && current.minPrice !== undefined
         ? current.minPrice
         : base.minPrice ?? null,
@@ -744,11 +777,15 @@ class AiService {
       needFinalAi: false,
       showProducts: more ? true : route.showProducts,
       responseMode: more ? 'brief' : route.responseMode,
-      clarificationQuestion: '',
+      clarificationQuestion: more ? '' : route.clarificationQuestion,
       search: mergedSearch,
       consultation: more
         ? { ready: true, mode: 'more', pendingField: '' }
-        : { ...(previous.consultation || {}), ready: false }
+        : {
+            ...(previous.consultation || {}),
+            ...(route.consultation || {}),
+            ready: Boolean(route?.consultation?.ready)
+          }
     };
   }
 
@@ -783,9 +820,15 @@ class AiService {
     }
 
     if (!categories.length || categories.every((category) => ['ao', 'quan', 'balo', 'bong'].includes(category))) {
+      if (kind === 'racket') {
+        return {
+          pendingField: 'sport',
+          question: 'Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?'
+        };
+      }
       return {
         pendingField: 'sport',
-        question: `Bạn cần ${kind === 'shoe' ? 'giày' : kind === 'racket' ? 'vợt' : 'sản phẩm'} cho bộ môn hoặc mục đích sử dụng nào?`
+        question: `Bạn cần ${kind === 'shoe' ? 'giày' : 'sản phẩm'} cho bộ môn hoặc mục đích sử dụng nào?`
       };
     }
 
@@ -804,7 +847,8 @@ class AiService {
     }
 
     const hasPrice = search.minPrice !== null || search.maxPrice !== null;
-    if (hasPrice) return null;
+    const budgetFlexible = (search.flexibleFields || []).includes('budget');
+    if (hasPrice || budgetFlexible) return null;
     const otherConstraintCount = [
       (search.brands || []).length > 0,
       (search.colors || []).length > 0,
@@ -864,6 +908,22 @@ class AiService {
         }
       };
     }
+
+    if (route?.consultation?.aiManaged && route?.consultation?.ready) {
+      return {
+        ...route,
+        search: {
+          ...route.search,
+          limit: this.productPageSize()
+        },
+        consultation: {
+          ...route.consultation,
+          ready: true,
+          pendingField: ''
+        }
+      };
+    }
+
     const missing = this.consultationQuestion(route, message);
     if (!missing) {
       return {
@@ -928,6 +988,7 @@ class AiService {
   }
 
   applyCodeClarification(route, message, rules = this.codeSearchRules(message)) {
+    if (route?.consultation?.aiManaged) return route;
     const q = canonicalSearchText(message);
     const incompleteProductQuestion = /^(?:co )?(?:giay|vot|ao|quan|balo|ba lo|tui)(?: di| nao| khong)?$/.test(q);
     const hasUsefulConstraint = Boolean(
@@ -936,11 +997,14 @@ class AiService {
     );
     if (!incompleteProductQuestion || hasUsefulConstraint) return route;
 
-    const kind = rules.productKind === 'racket' ? 'vợt' : rules.productKind === 'shoe' ? 'giày' : 'sản phẩm';
+    const racket = rules.productKind === 'racket';
+    const kind = racket ? 'vợt' : rules.productKind === 'shoe' ? 'giày' : 'sản phẩm';
     return {
       ...route,
       responseMode: 'clarify',
-      clarificationQuestion: `Bạn đang tìm ${kind} cho bộ môn hoặc nhu cầu nào? Ví dụ: bóng đá, chạy bộ, bóng chuyền, cầu lông, tennis hoặc pickleball.`,
+      clarificationQuestion: racket
+        ? 'Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?'
+        : `Bạn đang tìm ${kind} cho bộ môn hoặc nhu cầu nào?`,
       showProducts: false
     };
   }
@@ -987,6 +1051,10 @@ class AiService {
         requirements: uniqueNeedGroups([...rules.requirements, ...aiRequirements]),
         preferences: uniqueNeedGroups([...rules.preferences, ...(search.preferences || [])]),
         excludeTerms: uniqueStrings([...rules.excludeTerms, ...aiExcludeTerms]),
+        flexibleFields: cleanFlexibleFields([
+          ...(rules.flexibleFields || []),
+          ...(search.flexibleFields || [])
+        ]),
         minPrice: rules.minPrice !== null ? rules.minPrice : search.minPrice,
         maxPrice: rules.maxPrice !== null ? rules.maxPrice : search.maxPrice,
         inStockOnly: rules.inStockOnly || Boolean(search.inStockOnly)
@@ -1073,6 +1141,7 @@ class AiService {
         requirements: codeRules.requirements,
         preferences: codeRules.preferences,
         excludeTerms: codeRules.excludeTerms,
+        flexibleFields: codeRules.flexibleFields,
         minPrice: codeRules.minPrice,
         maxPrice: codeRules.maxPrice,
         inStockOnly: codeRules.inStockOnly,
@@ -1206,7 +1275,7 @@ class AiService {
     };
   }
 
-  normalizeRoute(raw, message) {
+  normalizeRoute(raw, message, options = {}) {
     const intent = INTENTS.has(String(raw?.intent)) ? String(raw.intent) : 'unknown';
     const search = raw?.search && typeof raw.search === 'object' ? raw.search : {};
     const needDatabaseByIntent = [
@@ -1224,6 +1293,15 @@ class AiService {
     const isProductFlow = needDatabaseByIntent;
     const needsAdviceFinal = isProductFlow
       && (asksAdvice || ['recommend', 'compare'].includes(responseMode));
+    const rawConsultation = raw?.consultation && typeof raw.consultation === 'object'
+      ? raw.consultation
+      : {};
+    const aiManaged = Boolean(options.aiManaged);
+    const consultationReady = aiManaged
+      ? rawConsultation.ready === undefined
+        ? Boolean(raw?.showProducts && responseMode !== 'clarify')
+        : Boolean(rawConsultation.ready)
+      : Boolean(rawConsultation.ready);
 
     const normalized = {
       intent,
@@ -1243,6 +1321,11 @@ class AiService {
       needsAdmin: Boolean(raw?.needsAdmin) || intent === 'admin_handoff',
       responseMode,
       clarificationQuestion: cleanString(raw?.clarificationQuestion, 240),
+      consultation: {
+        ready: consultationReady,
+        pendingField: cleanString(rawConsultation.pendingField, 40),
+        aiManaged
+      },
       search: {
         query: cleanString(search.query || message, 500),
         codes: cleanList(search.codes, 10, 100),
@@ -1257,6 +1340,7 @@ class AiService {
         requirements: cleanNeedGroups(search.requirements, 8, 8),
         preferences: cleanNeedGroups(search.preferences, 8, 8),
         excludeTerms: cleanList(search.excludeTerms, 16, 100),
+        flexibleFields: cleanFlexibleFields(search.flexibleFields),
         minPrice: cleanPrice(search.minPrice),
         maxPrice: cleanPrice(search.maxPrice),
         inStockOnly: Boolean(search.inStockOnly),
@@ -1273,6 +1357,73 @@ class AiService {
     }
 
     return normalized;
+  }
+
+  lastAssistantText(history = []) {
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (['assistant', 'admin'].includes(history[index]?.role) && history[index]?.text) {
+        return cleanString(history[index].text, 500);
+      }
+    }
+    return '';
+  }
+
+  routerDecisionIssue(route, message, history = []) {
+    if (!route) return 'Router không tạo được quyết định.';
+    const currentQuestion = normalizeText(route.clarificationQuestion);
+    const previousQuestion = normalizeText(this.lastAssistantText(history));
+    if (
+      route.responseMode === 'clarify'
+      && currentQuestion
+      && previousQuestion
+      && currentQuestion === previousQuestion
+    ) {
+      return 'Bạn đã lặp nguyên câu hỏi vừa hỏi dù khách đã trả lời.';
+    }
+
+    const previous = this.lastProductContext(history);
+    const pendingField = previous?.consultation?.pendingField;
+    if (
+      pendingField
+      && (route?.search?.flexibleFields || []).includes(pendingField)
+      && route.responseMode === 'clarify'
+    ) {
+      return `Khách đã cho phép linh hoạt trường ${pendingField}, không được hỏi lại trường này.`;
+    }
+
+    const kind = this.detectedProductKind([
+      message,
+      ...(route?.search?.categories || []),
+      ...(route?.search?.requirements || []).flatMap((group) => group.terms || [])
+    ].join(' '));
+    const categoryText = canonicalSearchText((route?.search?.categories || []).join(' '));
+    const questionText = canonicalSearchText(route.clarificationQuestion);
+    if (
+      kind === 'racket'
+      && /\b(bong da|chay bo|bong chuyen|bong ro)\b/.test(`${categoryText} ${questionText}`)
+    ) {
+      return 'Quyết định ghép vợt với bộ môn không sử dụng vợt.';
+    }
+    return '';
+  }
+
+  buildRouterRepairUserPrompt(payload, firstDecision, reason) {
+    return [
+      'TÁC VỤ SỬA QUYẾT ĐỊNH ROUTER CHO CHATBOT BÁN HÀNG.',
+      'Quyết định đầu tiên có lỗi logic hội thoại. Hãy đọc lại toàn bộ HISTORY và CONVERSATION_STATE rồi xuất một JSON mới.',
+      'Không lặp câu hỏi cũ, không giải thích, không markdown và không thêm trường ngoài schema.',
+      '',
+      'QUY TẮC MODULE ROUTER:',
+      this.buildRouterSystemPrompt(),
+      '',
+      `REPAIR_REASON: ${cleanString(reason, 300)}`,
+      'FIRST_DECISION:',
+      JSON.stringify(firstDecision),
+      'INPUT_JSON:',
+      JSON.stringify(payload),
+      '',
+      'OUTPUT_JSON_ONLY:'
+    ].join('\n');
   }
 
   async route(message, history = [], options = {}) {
@@ -1328,7 +1479,7 @@ class AiService {
     } else {
       result = {
         ...this.finalizeProductRoute(
-          this.normalizeRoute(parsed, expandedMessage),
+          this.normalizeRoute(parsed, expandedMessage, { aiManaged: true }),
           expandedMessage,
           history
         ),
@@ -1336,6 +1487,41 @@ class AiService {
         ambiguities: resolution.ambiguous,
         _source: 'ai-router'
       };
+    }
+
+    const issue = parsed ? this.routerDecisionIssue(result, expandedMessage, history) : '';
+    if (issue) {
+      try {
+        const repairText = await this.call({
+          model: this.config.routerModel,
+          maxTokens: this.config.routerMaxTokens,
+          temperature: 0,
+          system: '',
+          messages: [{
+            role: 'user',
+            content: this.buildRouterRepairUserPrompt(payload, result, issue)
+          }],
+          purpose: 'router-repair'
+        });
+        const repaired = this.parseJson(repairText);
+        if (repaired) {
+          const repairedRoute = {
+            ...this.finalizeProductRoute(
+              this.normalizeRoute(repaired, expandedMessage, { aiManaged: true }),
+              expandedMessage,
+              history
+            ),
+            corrections: resolution.corrections,
+            ambiguities: resolution.ambiguous,
+            _source: 'ai-router-repair'
+          };
+          if (!this.routerDecisionIssue(repairedRoute, expandedMessage, history)) {
+            result = repairedRoute;
+          }
+        }
+      } catch (error) {
+        console.warn(`AI Router repair lỗi; giữ quyết định an toàn hiện tại: ${error.message}`);
+      }
     }
     this.writeCache(key, result);
     return result;

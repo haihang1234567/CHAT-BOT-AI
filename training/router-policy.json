@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "principles": [
+    "AI đọc toàn bộ câu hiện tại cùng HISTORY và CONVERSATION_STATE trước khi quyết định.",
+    "AI quyết định đã đủ thông tin để tìm sản phẩm hay phải hỏi thêm đúng một câu tự nhiên.",
+    "Không hỏi lại trường mà khách đã trả lời hoặc đã nói không giới hạn.",
+    "Không ghép loại sản phẩm với bộ môn không sử dụng loại sản phẩm đó."
+  ],
+  "taxonomy": {
+    "racket": ["cầu lông", "tennis", "pickleball", "bóng bàn"],
+    "shoe": ["bóng đá", "chạy bộ", "bóng chuyền", "cầu lông", "tennis", "pickleball", "bóng rổ"],
+    "ball": ["bóng đá", "bóng chuyền", "bóng rổ", "tennis", "pickleball", "bóng bàn"]
+  },
+  "contextualTypos": {
+    "pickleball": ["pick", "pcik", "pik", "pickel", "pickeball", "pịck"],
+    "cầu lông": ["cau long", "cầu long", "cau lông"],
+    "vợt": ["vot", "vọt"],
+    "không": ["ko", "k", "hok", "khum"]
+  },
+  "flexibleAnswers": {
+    "budget": ["bao nhiêu cũng được", "giá nào cũng được", "không giới hạn ngân sách", "không quan trọng giá", "tầm nào cũng được"],
+    "brand": ["hãng nào cũng được", "không cần hãng", "không quan trọng thương hiệu"],
+    "color": ["màu nào cũng được", "không quan trọng màu"],
+    "size": ["size nào cũng được", "chưa biết size"]
+  },
+  "examples": [
+    {
+      "history": [],
+      "message": "mua vợt",
+      "decision": "clarify",
+      "pendingField": "sport",
+      "reply": "Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?"
+    },
+    {
+      "history": ["Khách: mua vợt", "Bot: Bạn muốn tìm vợt môn nào?"],
+      "message": "pcik đi",
+      "decision": "search",
+      "understanding": "vợt pickleball",
+      "ready": true
+    },
+    {
+      "history": ["Bot: Khoảng ngân sách bạn muốn chọn là bao nhiêu?"],
+      "message": "bao nhiêu cũng được",
+      "decision": "search",
+      "flexibleFields": ["budget"],
+      "ready": true
+    },
+    {
+      "history": [],
+      "message": "vợt bóng chuyền",
+      "decision": "clarify",
+      "pendingField": "sport",
+      "reply": "Bóng chuyền không dùng vợt. Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?"
+    }
+  ]
+}
