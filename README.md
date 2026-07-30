@@ -34,9 +34,10 @@ ngắn như `2tr`, `tầm hai triệu`, `trong nhà` hoặc `chân hơi bè` đ�
 ngữ cảnh thay vì xử lý bằng bộ từ khóa cố định và lặp lại câu hỏi cũ.
 
 Khi câu hỏi đã đủ điều kiện lọc cơ bản, ví dụ “giày chạy bộ dưới 1,5 triệu”,
-backend trả tối đa 5 sản phẩm ngay. Sản phẩm được hiển thị dạng danh sách gọn phù
-hợp với cửa sổ chat nhỏ. Nút “Xem thêm sản phẩm” giữ nguyên tiêu chí cũ và loại
-các sản phẩm đã hiển thị để không lặp kết quả.
+backend trả 3 sản phẩm mỗi lượt. Sản phẩm được hiển thị dạng danh sách gọn phù
+hợp với cửa sổ chat nhỏ. Nếu còn kết quả, nút **Xem thêm sản phẩm** giữ nguyên
+tiêu chí, loại các sản phẩm đã hiển thị và lấy trang tiếp theo hoàn toàn bằng
+code. Thao tác này không gọi Router hoặc Final AI nên không phát sinh token AI.
 
 Từ viết tắt và lỗi chính tả được chuẩn hóa bằng từ vựng lấy từ danh mục Haravan.
 Mã sản phẩm, SKU, Barcode và size không bị tự sửa. Nếu AI Router lỗi, Router bằng
@@ -177,7 +178,7 @@ AI_COST_MODE=balanced
 AI_ROUTER_MAX_TOKENS=500
 AI_FINAL_MAX_TOKENS=320
 AI_MAX_CANDIDATES=3
-CHAT_PRODUCT_PAGE_SIZE=5
+CHAT_PRODUCT_PAGE_SIZE=3
 AI_MAX_VARIANTS=4
 AI_DESCRIPTION_CHARS=260
 AI_HISTORY_MESSAGES=2
