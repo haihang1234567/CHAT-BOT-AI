@@ -97,6 +97,54 @@
         "clarificationUsesCatalogOptions": true
       },
       "note": "Từ gần đúng có nhiều lựa chọn phải hỏi lại, không tự đoán."
+    },
+    {
+      "id": "racket-valid-sports-001",
+      "question": "mua vợt",
+      "expected": {
+        "responseMode": "clarify",
+        "showProducts": false,
+        "replyMustIncludeAny": ["cầu lông", "tennis", "pickleball", "bóng bàn"],
+        "replyMustNotInclude": ["bóng đá", "chạy bộ", "bóng chuyền", "bóng rổ"]
+      },
+      "note": "Câu hỏi làm rõ phải phù hợp đúng loại sản phẩm."
+    },
+    {
+      "id": "contextual-pcik-racket-001",
+      "question": "pcik đi",
+      "context": {
+        "pendingField": "sport",
+        "previousNeed": "vợt"
+      },
+      "expected": {
+        "understandingIncludes": ["vợt", "pickleball"],
+        "mustNotRepeatPendingQuestion": true
+      },
+      "note": "AI sửa lỗi đảo ký tự theo ngữ cảnh hội thoại, không phụ thuộc edit-distance catalog."
+    },
+    {
+      "id": "flexible-budget-001",
+      "question": "bao nhiêu cũng được",
+      "context": {
+        "pendingField": "budget",
+        "previousNeed": "vợt pickleball"
+      },
+      "expected": {
+        "showProducts": true,
+        "flexibleFieldsIncludes": ["budget"],
+        "mustNotRepeatPendingQuestion": true
+      },
+      "note": "Ngân sách mở được coi là đã trả lời và chatbot tiếp tục tìm sản phẩm."
+    },
+    {
+      "id": "impossible-racket-sport-001",
+      "question": "vợt bóng chuyền",
+      "expected": {
+        "responseMode": "clarify",
+        "showProducts": false,
+        "replyMustInclude": ["bóng chuyền không dùng vợt"]
+      },
+      "note": "AI nhận ra mâu thuẫn kiến thức cơ bản trước khi truy vấn kho."
     }
   ]
 }
