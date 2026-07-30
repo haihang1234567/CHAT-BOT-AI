@@ -200,6 +200,17 @@ test('giao diện gọi endpoint phân trang riêng thay vì gửi lại prompt 
     path.resolve(__dirname, '..', 'public', 'js', 'app.js'),
     'utf8'
   );
-  assert.match(source, /action === 'load_more_products'/);
+  const css = fs.readFileSync(
+    path.resolve(__dirname, '..', 'public', 'css', 'styles.css'),
+    'utf8'
+  );
+  const productListIndex = source.indexOf('stack.appendChild(renderProductGrid(options.products))');
+  const loadMoreIndex = source.indexOf('stack.appendChild(loadMoreControls)');
+
+  assert.ok(productListIndex >= 0);
+  assert.ok(loadMoreIndex > productListIndex);
+  assert.match(source, /product-load-more/);
   assert.match(source, /fetch\('\/api\/chat\/products\/more'/);
+  assert.match(css, /\.product-load-more\s*\{[^}]*justify-content:\s*center/);
+  assert.match(css, /\.product-load-more \.message-follow-up\s*\{[^}]*text-align:\s*center/);
 });
