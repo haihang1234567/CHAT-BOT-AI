@@ -112,6 +112,7 @@
       if (sources.querySelector('a')) stack.appendChild(sources);
     }
 
+    let loadMoreSuggestion = null;
     if (role === 'assistant' && Array.isArray(options.suggestions) && options.suggestions.length) {
       const followUps = create('div', 'message-follow-ups');
       for (const suggestion of options.suggestions.slice(0, 3)) {
@@ -119,12 +120,13 @@
         const prompt = String(typeof suggestion === 'string' ? suggestion : suggestion?.prompt || label).trim();
         const action = String(typeof suggestion === 'object' ? suggestion?.action || '' : '').trim();
         if (!label || (!prompt && !action)) continue;
+        if (action === 'load_more_products') {
+          loadMoreSuggestion = { label, action };
+          continue;
+        }
         const button = create('button', 'message-follow-up', label);
         button.type = 'button';
-        button.addEventListener('click', () => {
-          if (action === 'load_more_products') loadMoreProducts(button);
-          else sendMessage(prompt);
-        });
+        button.addEventListener('click', () => sendMessage(prompt));
         followUps.appendChild(button);
       }
       if (followUps.childElementCount) stack.appendChild(followUps);
@@ -132,6 +134,15 @@
 
     if (Array.isArray(options.products) && options.products.length) {
       stack.appendChild(renderProductGrid(options.products));
+    }
+
+    if (loadMoreSuggestion) {
+      const loadMoreControls = create('div', 'message-follow-ups product-load-more');
+      const button = create('button', 'message-follow-up', loadMoreSuggestion.label);
+      button.type = 'button';
+      button.addEventListener('click', () => loadMoreProducts(button));
+      loadMoreControls.appendChild(button);
+      stack.appendChild(loadMoreControls);
     }
 
     row.append(avatar, stack);
