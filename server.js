@@ -141,6 +141,58 @@ function productCardsByIds(ids, fallbackCandidates = []) {
   return Array.isArray(ids) ? selected : fallbackCandidates.slice(0, 5);
 }
 
+function productPageSize() {
+  return Math.max(1, Math.min(5, Number(config.ai.chatProductPageSize || 3)));
+}
+
+function productPage(route, fallbackQuery = '', excludedIds = []) {
+  if (!route?.needDatabase || !route?.showProducts) {
+    return { items: [], hasMore: false };
+  }
+  const pageSize = productPageSize();
+  const excluded = [...new Set([
+    ...(route?.search?.excludeProductIds || []),
+    ...(excludedIds || [])
+  ].map(String).filter(Boolean))];
+  const pageRoute = {
+    ...route,
+    search: {
+      ...(route.search || {}),
+      excludeProductIds: excluded,
+      limit: pageSize + 1
+    }
+  };
+  const matches = products.queryByPlan(pageRoute, fallbackQuery, pageSize + 1);
+  return {
+    items: matches.slice(0, pageSize),
+    hasMore: matches.length > pageSize
+  };
+}
+
+function loadMoreSuggestions(suggestions = [], hasMore = false) {
+  const remaining = (Array.isArray(suggestions) ? suggestions : [])
+    .filter((item) => item?.action !== 'load_more_products')
+    .slice(0, hasMore ? 2 : 3);
+  return hasMore
+    ? [{
+        label: 'Xem thêm sản phẩm',
+        action: 'load_more_products'
+      }, ...remaining]
+    : remaining;
+}
+
+function latestProductPagination(session) {
+  for (let index = (session?.messages || []).length - 1; index >= 0; index -= 1) {
+    const message = session.messages[index];
+    if (
+      message?.role === 'assistant'
+      && message?.pagination
+      && message?.route?.search
+    ) return message;
+  }
+  return null;
+}
+
 function routeSource(route, suffix = '') {
   const base = route?._source || 'ai-router';
   return `${base}${route?.cached ? '-cache' : ''}${suffix ? `-${suffix}` : ''}`;
@@ -271,6 +323,86 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { session: store.ensureSession(match[0]) });
   }
 
+  if (req.method === 'POST' && pathname === '/api/chat/products/more') {
+    const body = await readJson(req);
+    const sessionId = String(body.sessionId || '').trim();
+    if (!sessionId) return sendJson(res, 400, { error: 'Thiếu sessionId.' });
+
+    const session = store.ensureSession(sessionId);
+    if (session.status === 'waiting_admin' || session.status === 'human') {
+      return sendJson(res, 409, { error: 'Cuộc trò chuyện đang do nhân viên hỗ trợ.' });
+    }
+
+    const previous = latestProductPagination(session);
+    if (!previous?.pagination?.hasMore) {
+      return sendJson(res, 409, { error: 'Đã hiển thị tất cả sản phẩm phù hợp.' });
+    }
+
+    const shownIds = [...new Set(
+      (previous.pagination.shownProductIds || []).map(String).filter(Boolean)
+    )];
+    const nextPage = productPage(
+      {
+        ...previous.route,
+        needDatabase: true,
+        showProducts: true
+      },
+      previous.route?.search?.query || '',
+      shownIds
+    );
+    const nextIds = nextPage.items.map((item) => String(item.id));
+    const allShownIds = [...new Set([...shownIds, ...nextIds])];
+    const pagination = {
+      pageSize: productPageSize(),
+      shownProductIds: allShownIds,
+      hasMore: nextPage.hasMore
+    };
+    const route = {
+      ...previous.route,
+      search: {
+        ...(previous.route.search || {}),
+        excludeProductIds: allShownIds,
+        limit: productPageSize()
+      }
+    };
+    const suggestions = loadMoreSuggestions(previous.suggestions, pagination.hasMore);
+    const userMessage = store.addMessage(sessionId, 'user', 'Xem thêm sản phẩm', {
+      source: 'product-pagination-action'
+    });
+    emitAdmin('message-new', { sessionId, message: userMessage });
+
+    const replyText = nextPage.items.length
+      ? pagination.hasMore
+        ? `Mình gửi thêm ${nextPage.items.length} sản phẩm phù hợp. Bạn có thể tiếp tục bấm “Xem thêm sản phẩm”.`
+        : `Mình gửi ${nextPage.items.length} sản phẩm phù hợp còn lại. Đây là toàn bộ kết quả theo tiêu chí hiện tại.`
+      : 'Đã hiển thị tất cả sản phẩm phù hợp theo tiêu chí hiện tại.';
+    const replyMessage = store.addMessage(sessionId, 'assistant', replyText, {
+      source: 'product-pagination-code',
+      productIds: nextIds,
+      contextProductIds: nextIds,
+      suggestions,
+      sources: [],
+      route,
+      pagination: {
+        ...pagination,
+        hasMore: Boolean(nextPage.items.length && pagination.hasMore)
+      }
+    });
+    emitCustomer(sessionId, 'chat-message', { ...replyMessage, products: nextPage.items });
+    emitAdmin('message-new', { sessionId, message: replyMessage });
+    emitSession(sessionId);
+    return sendJson(res, 200, {
+      reply: replyText,
+      products: nextPage.items,
+      suggestions,
+      sources: [],
+      sessionStatus: session.status,
+      messageId: replyMessage.id,
+      source: replyMessage.source,
+      hasMore: replyMessage.pagination.hasMore
+    });
+  }
+
   if (req.method === 'POST' && pathname === '/api/chat') {
     const body = await readJson(req);
     const sessionId = String(body.sessionId || '').trim();
@@ -304,13 +436,14 @@ async function handleApi(req, res, url) {
     let source = 'local-fallback';
     let routeMeta = null;
     let databaseCandidates = [];
+    let pageHasMore = false;
 
     if (!ai.isConfigured()) {
       const route = ai.fallbackRoute(messageText, history, 'AI chưa được cấu hình.');
       routeMeta = routeMetadata(route);
-      const candidates = route.needDatabase && route.showProducts
-        ? products.queryByPlan(route, messageText, route.search.limit)
-        : [];
+      const page = productPage(route, messageText);
+      const candidates = page.items;
+      pageHasMore = page.hasMore;
       const localResult = ai.fallbackFinal(messageText, route, candidates, 'AI chưa được cấu hình.');
       const selectedProducts = productCardsByIds(localResult.productIds, candidates);
       responseData = {
@@ -393,9 +526,9 @@ async function handleApi(req, res, url) {
           ].join('+');
         } else {
           // Sản phẩm: AI chỉ xuất bộ lọc JSON; code truy vấn Haravan và dựng thẻ/biến thể.
-          const candidates = route.needDatabase
-            ? products.queryByPlan(route, messageText, route.search.limit)
-            : [];
+          const page = productPage(route, messageText);
+          const candidates = page.items;
+          pageHasMore = page.hasMore;
           databaseCandidates = candidates;
 
           if (route.needFinalAi) {
@@ -446,13 +579,29 @@ async function handleApi(req, res, url) {
     }
 
     if (responseData.needsAdmin) responseData.reply += ' Bạn có thể gõ “admin” để gặp nhân viên.';
+    const displayedProductIds = responseData.products.map((item) => String(item.id));
+    const pagination = routeMeta && displayedProductIds.length
+      ? {
+          pageSize: productPageSize(),
+          shownProductIds: displayedProductIds,
+          hasMore: Boolean(
+            pageHasMore
+            || databaseCandidates.some((item) => !displayedProductIds.includes(String(item.id)))
+          )
+        }
+      : null;
+    responseData.suggestions = loadMoreSuggestions(
+      responseData.suggestions,
+      Boolean(pagination?.hasMore)
+    );
     const replyMessage = store.addMessage(sessionId, 'assistant', responseData.reply, {
       source,
-      productIds: responseData.products.map((item) => item.id),
+      productIds: displayedProductIds,
       contextProductIds: responseData.contextProductIds || responseData.products.map((item) => item.id),
       suggestions: responseData.suggestions || [],
       sources: responseData.sources || [],
-      route: routeMeta
+      route: routeMeta,
+      pagination
     });
     emitCustomer(sessionId, 'chat-message', { ...replyMessage, products: responseData.products });
     emitAdmin('message-new', { sessionId, message: replyMessage });
@@ -464,7 +613,8 @@ async function handleApi(req, res, url) {
       sources: responseData.sources || [],
       sessionStatus: store.getSession(sessionId).status,
       messageId: replyMessage.id,
-      source
+      source,
+      hasMore: Boolean(pagination?.hasMore)
     });
   }
 

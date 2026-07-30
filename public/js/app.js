@@ -117,10 +117,14 @@
       for (const suggestion of options.suggestions.slice(0, 3)) {
         const label = String(typeof suggestion === 'string' ? suggestion : suggestion?.label || '').trim();
         const prompt = String(typeof suggestion === 'string' ? suggestion : suggestion?.prompt || label).trim();
-        if (!label || !prompt) continue;
+        const action = String(typeof suggestion === 'object' ? suggestion?.action || '' : '').trim();
+        if (!label || (!prompt && !action)) continue;
         const button = create('button', 'message-follow-up', label);
         button.type = 'button';
-        button.addEventListener('click', () => sendMessage(prompt));
+        button.addEventListener('click', () => {
+          if (action === 'load_more_products') loadMoreProducts(button);
+          else sendMessage(prompt);
+        });
         followUps.appendChild(button);
       }
       if (followUps.childElementCount) stack.appendChild(followUps);
@@ -618,6 +622,46 @@
     } catch (error) {
       hideTyping();
       addMessage('assistant', `Có lỗi kết nối: ${error.message}. Bạn có thể thử lại hoặc gõ “admin”.`);
+    } finally {
+      els.send.disabled = false;
+      els.input.focus();
+    }
+  }
+
+  async function loadMoreProducts(button) {
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Đang tải...';
+    }
+    addMessage('user', 'Xem thêm sản phẩm');
+    els.send.disabled = true;
+    showTyping();
+
+    try {
+      const response = await fetch('/api/chat/products/more', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: state.sessionId })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Không tải được sản phẩm tiếp theo.');
+      hideTyping();
+      if (result.reply && !state.seenMessageIds.has(result.messageId)) {
+        addMessage('assistant', result.reply, {
+          id: result.messageId,
+          products: result.products || [],
+          suggestions: result.suggestions || [],
+          sources: []
+        });
+      }
+      if (button) button.textContent = 'Đã xem';
+    } catch (error) {
+      hideTyping();
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Xem thêm sản phẩm';
+      }
+      addMessage('assistant', error.message);
     } finally {
       els.send.disabled = false;
       els.input.focus();
