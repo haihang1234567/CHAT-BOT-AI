@@ -336,11 +336,11 @@ class HaravanService {
     }
   }
 
-  startAutoSync(onError = () => {}) {
+  startAutoSync(onError = () => {}, onSuccess = () => {}) {
     const intervalMs = Math.max(60_000, Number(this.config.syncIntervalMs || 600_000));
     this.stopAutoSync();
     this.timer = setInterval(() => {
-      this.sync().catch(onError);
+      this.sync().then(onSuccess).catch(onError);
     }, intervalMs);
     this.timer.unref();
   }

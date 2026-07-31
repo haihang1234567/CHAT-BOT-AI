@@ -52,41 +52,28 @@ function racketRequirement() {
   return [{ label: 'Loại sản phẩm: Vợt', terms: ['vợt'], scope: 'identity' }];
 }
 
-test('bộ huấn luyện router có taxonomy, lỗi gõ pcik và câu trả lời ngân sách mở', () => {
+test('bộ huấn luyện router dùng taxonomy từ catalog, lỗi gõ pcik và câu trả lời ngân sách mở', () => {
   const { ai } = createServices();
   const prompt = ai.buildRouterSystemPrompt();
 
-  assert.match(prompt, /racket=\[cầu lông, tennis, pickleball, bóng bàn\]/i);
+  assert.match(prompt, /racket=\[Vợt Cầu Lông, Vợt Pickleball\]/i);
+  assert.doesNotMatch(prompt, /Vợt Tennis|Vợt Bóng Bàn/i);
   assert.match(prompt, /pcik.*pickleball/i);
   assert.match(prompt, /bao nhiêu cũng được/i);
   assert.match(prompt, /consultation.*pendingField/i);
 });
 
-test('AI tự sửa câu hỏi vô lý “vợt bóng chuyền” trước khi trả cho khách', async () => {
+test('code thay lựa chọn AI tự bịa bằng các loại vợt có thật trong catalog', async () => {
   const { ai } = createServices();
   const prompts = [];
   ai.call = async ({ messages, purpose }) => {
     prompts.push({ purpose, content: messages[0].content });
-    if (purpose === 'router') {
-      return JSON.stringify({
-        intent: 'search_product',
-        needDatabase: true,
-        showProducts: false,
-        responseMode: 'clarify',
-        clarificationQuestion: 'Bạn cần vợt cho bóng đá, chạy bộ, bóng chuyền, cầu lông hay pickleball?',
-        consultation: { ready: false, pendingField: 'sport' },
-        search: {
-          query: 'mua vợt',
-          requirements: racketRequirement()
-        }
-      });
-    }
     return JSON.stringify({
       intent: 'search_product',
       needDatabase: true,
       showProducts: false,
       responseMode: 'clarify',
-      clarificationQuestion: 'Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?',
+      clarificationQuestion: 'Bạn cần vợt cho bóng đá, bóng chuyền, cầu lông, tennis hay bóng bàn?',
       consultation: { ready: false, pendingField: 'sport' },
       search: {
         query: 'mua vợt',
@@ -97,14 +84,13 @@ test('AI tự sửa câu hỏi vô lý “vợt bóng chuyền” trước khi t
 
   const route = await ai.route('mua vợt');
 
-  assert.equal(prompts.length, 2);
-  assert.equal(prompts[1].purpose, 'router-repair');
-  assert.match(prompts[1].content, /ghép vợt với bộ môn không sử dụng vợt/i);
-  assert.equal(route._source, 'ai-router-repair');
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].purpose, 'router');
+  assert.equal(route._source, 'ai-router');
   assert.equal(route.showProducts, false);
   assert.equal(route.consultation.pendingField, 'sport');
-  assert.match(route.clarificationQuestion, /cầu lông.*tennis.*pickleball.*bóng bàn/i);
-  assert.doesNotMatch(route.clarificationQuestion, /bóng đá|chạy bộ|bóng chuyền|bóng rổ/i);
+  assert.match(route.clarificationQuestion, /Cầu Lông.*Pickleball/i);
+  assert.doesNotMatch(route.clarificationQuestion, /bóng đá|chạy bộ|bóng chuyền|bóng rổ|tennis|bóng bàn/i);
 });
 
 test('AI hiểu “pcik đi” theo câu hỏi vợt trước đó và code chỉ truy vấn đúng sản phẩm', async () => {
@@ -219,11 +205,11 @@ test('“bao nhiêu cũng được” được coi là ngân sách mở và khô
   assert.equal(route.clarificationQuestion, '');
 });
 
-test('fallback khi AI mất kết nối cũng không gợi ý vợt cho môn không dùng vợt', () => {
+test('fallback khi AI mất kết nối chỉ gợi ý loại vợt có trong catalog', () => {
   const { ai } = createServices();
   const route = ai.fallbackRoute('mua vợt');
 
   assert.equal(route.responseMode, 'clarify');
-  assert.match(route.clarificationQuestion, /cầu lông.*tennis.*pickleball.*bóng bàn/i);
-  assert.doesNotMatch(route.clarificationQuestion, /bóng đá|chạy bộ|bóng chuyền|bóng rổ/i);
+  assert.match(route.clarificationQuestion, /Cầu Lông.*Pickleball/i);
+  assert.doesNotMatch(route.clarificationQuestion, /bóng đá|chạy bộ|bóng chuyền|bóng rổ|tennis|bóng bàn/i);
 });
