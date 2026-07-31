@@ -18,6 +18,10 @@ const productSource = String(process.env.PRODUCT_SOURCE || (haravanToken ? 'hara
   .trim()
   .toLowerCase();
 const aiCostMode = String(process.env.AI_COST_MODE || 'balanced').trim().toLowerCase();
+const requestedVoyageDimension = Number(process.env.VOYAGE_OUTPUT_DIMENSION || 512);
+const voyageOutputDimension = [256, 512, 1024, 2048].includes(requestedVoyageDimension)
+  ? requestedVoyageDimension
+  : 512;
 const defaultOfficialDomains = [
   'fifa.com',
   'theifab.com',
@@ -42,7 +46,7 @@ module.exports = {
   shopDomain: String(process.env.SHOP_DOMAIN || 'https://www.greenholdingsport.vn').replace(/\/$/, ''),
   productCsvPath: resolveProjectPath(process.env.PRODUCT_CSV_PATH, './data/products.csv'),
   storePath: resolveProjectPath(process.env.STORE_PATH, './data/local-store.json'),
-  adminPassword: String(process.env.ADMIN_PASSWORD || '123456'),
+  adminPassword: String(process.env.ADMIN_PASSWORD || ''),
   productSource: ['haravan', 'csv'].includes(productSource) ? productSource : 'csv',
   haravan: {
     baseUrl: String(process.env.HARAVAN_API_BASE_URL || 'https://apis.haravan.com/com').replace(/\/$/, ''),
@@ -57,6 +61,19 @@ module.exports = {
       .map((value) => value.trim())
       .filter(Boolean),
     fallbackToCsv: booleanValue(process.env.HARAVAN_FALLBACK_TO_CSV, true)
+  },
+  embedding: {
+    enabled: booleanValue(process.env.VOYAGE_EMBEDDING_ENABLED, true),
+    apiKey: String(process.env.VOYAGE_API_KEY || '').trim(),
+    endpoint: String(process.env.VOYAGE_API_URL || 'https://api.voyageai.com/v1/embeddings'),
+    model: String(process.env.VOYAGE_EMBEDDING_MODEL || 'voyage-4-lite').trim(),
+    outputDimension: voyageOutputDimension,
+    timeoutMs: Math.max(3000, Number(process.env.VOYAGE_TIMEOUT_MS || 30000)),
+    batchSize: Math.max(1, Math.min(1000, Number(process.env.VOYAGE_BATCH_SIZE || 64))),
+    queryCacheTtlMs: Math.max(60000, Number(process.env.VOYAGE_QUERY_CACHE_TTL_MS || 1800000)),
+    minScore: Math.max(-1, Math.min(1, Number(process.env.VOYAGE_MIN_SCORE || 0.25))),
+    autoSync: booleanValue(process.env.VOYAGE_AUTO_SYNC, true),
+    indexPath: resolveProjectPath(process.env.PRODUCT_EMBEDDINGS_PATH, './data/embeddings.json')
   },
   ai: {
     baseUrl: String(process.env.ANTHROPIC_BASE_URL || 'https://llm.wokushop.com').replace(/\/$/, ''),

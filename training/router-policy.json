@@ -4,13 +4,8 @@
     "AI đọc toàn bộ câu hiện tại cùng HISTORY và CONVERSATION_STATE trước khi quyết định.",
     "AI quyết định đã đủ thông tin để tìm sản phẩm hay phải hỏi thêm đúng một câu tự nhiên.",
     "Không hỏi lại trường mà khách đã trả lời hoặc đã nói không giới hạn.",
-    "Không ghép loại sản phẩm với bộ môn không sử dụng loại sản phẩm đó."
+    "Chỉ dùng loại sản phẩm và thương hiệu xuất hiện trong CATALOG_SUMMARY được tạo từ kho thật."
   ],
-  "taxonomy": {
-    "racket": ["cầu lông", "tennis", "pickleball", "bóng bàn"],
-    "shoe": ["bóng đá", "chạy bộ", "bóng chuyền", "cầu lông", "tennis", "pickleball", "bóng rổ"],
-    "ball": ["bóng đá", "bóng chuyền", "bóng rổ", "tennis", "pickleball", "bóng bàn"]
-  },
   "contextualTypos": {
     "pickleball": ["pick", "pcik", "pik", "pickel", "pickeball", "pịck"],
     "cầu lông": ["cau long", "cầu long", "cau lông"],
@@ -28,8 +23,7 @@
       "history": [],
       "message": "mua vợt",
       "decision": "clarify",
-      "pendingField": "sport",
-      "reply": "Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?"
+      "pendingField": "sport"
     },
     {
       "history": ["Khách: mua vợt", "Bot: Bạn muốn tìm vợt môn nào?"],
@@ -44,13 +38,6 @@
       "decision": "search",
       "flexibleFields": ["budget"],
       "ready": true
-    },
-    {
-      "history": [],
-      "message": "vợt bóng chuyền",
-      "decision": "clarify",
-      "pendingField": "sport",
-      "reply": "Bóng chuyền không dùng vợt. Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?"
     }
   ]
 }

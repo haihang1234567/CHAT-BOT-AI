@@ -1,5 +1,6 @@
 const fs = require('fs');
 const { SLANG_EXPANSION_TOKENS } = require('./chatSlangNormalizer');
+const { cosineSimilarity } = require('./embeddingService');
 
 
 function forEachCsvObject(input, callback) {
@@ -173,6 +174,23 @@ function parsePriceIntent(rawQuery) {
   return { min: value * 0.75, max: value * 1.25, target: value };
 }
 
+function formatVnd(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return 'chưa có giá';
+  return `${Math.round(number).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')}₫`;
+}
+
+function catalogProductKind(value) {
+  const text = canonicalSearchText(value);
+  if (/(?:^|\s)vot(?:\s|$)/.test(text)) return 'racket';
+  if (/(?:^|\s)giay(?:\s|$)/.test(text)) return 'shoe';
+  if (/(?:^|\s)(?:ao|polo|tee|jacket)(?:\s|$)/.test(text)) return 'shirt';
+  if (/(?:^|\s)(?:quan|short)(?:\s|$)/.test(text)) return 'pants';
+  if (/(?:^|\s)(?:balo|ba lo|tui)(?:\s|$)/.test(text)) return 'bag';
+  if (/(?:^|\s)(?:qua bong|bong thi dau)(?:\s|$)/.test(text)) return 'ball';
+  return 'other';
+}
+
 class ProductService {
   constructor(csvPath, shopDomain, options = {}) {
     this.csvPath = csvPath;
@@ -185,6 +203,8 @@ class ProductService {
     this.brandNames = [];
     this.source = 'empty';
     this.lastLoadedAt = null;
+    this.embeddingService = options.embeddingService || null;
+    this._catalogSummary = this.buildCatalogSummary();
     if (options.loadCsv !== false) this.load();
   }
 
@@ -317,6 +337,7 @@ class ProductService {
     }
     this.source = source;
     this.lastLoadedAt = new Date().toISOString();
+    this._catalogSummary = this.buildCatalogSummary();
   }
 
   status() {
@@ -324,12 +345,130 @@ class ProductService {
       source: this.source,
       productCount: this.products.length,
       variantCount: this.products.reduce((sum, product) => sum + product.variants.length, 0),
-      lastLoadedAt: this.lastLoadedAt
+      lastLoadedAt: this.lastLoadedAt,
+      embeddings: this.embeddingStatus()
+    };
+  }
+
+  embeddingStatus() {
+    return this.embeddingService?.status?.() || {
+      enabled: false,
+      configured: false,
+      vectorCount: 0
     };
   }
 
   catalogBrands() {
     return [...this.brandNames];
+  }
+
+  buildCatalogSummary() {
+    const availableProducts = (this.products || []).filter((product) => (
+      (product.variants || []).some((variant) => variant.inStock)
+    ));
+    const typeMap = new Map();
+    const brandMap = new Map();
+    const catalogPrices = [];
+
+    for (const product of availableProducts) {
+      const inStockPrices = (product.variants || [])
+        .filter((variant) => variant.inStock && Number(variant.price) > 0)
+        .map((variant) => Number(variant.price));
+      catalogPrices.push(...inStockPrices);
+
+      const typeName = clean(product.type);
+      const typeKey = canonicalSearchText(typeName);
+      if (typeKey) {
+        const current = typeMap.get(typeKey) || {
+          name: typeName,
+          normalized: typeKey,
+          kind: catalogProductKind(typeName),
+          count: 0,
+          prices: []
+        };
+        current.count += 1;
+        current.prices.push(...inStockPrices);
+        typeMap.set(typeKey, current);
+      }
+
+      const brandName = clean(product.brand);
+      const brandKey = canonicalSearchText(brandName);
+      if (brandKey) {
+        const current = brandMap.get(brandKey) || {
+          name: brandName,
+          normalized: brandKey,
+          count: 0
+        };
+        current.count += 1;
+        brandMap.set(brandKey, current);
+      }
+    }
+
+    const priceRange = (prices) => ({
+      min: prices.length ? Math.min(...prices) : 0,
+      max: prices.length ? Math.max(...prices) : 0
+    });
+    const typeStats = [...typeMap.values()]
+      .map(({ prices, ...type }) => ({ ...type, ...priceRange(prices) }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'vi'));
+    const brandStats = [...brandMap.values()]
+      .sort((left, right) => left.name.localeCompare(right.name, 'vi'));
+    const catalogPriceRange = priceRange(catalogPrices);
+    const typeLines = typeStats.map((type) => (
+      `- ${type.name}: ${type.count} sản phẩm, giá ${formatVnd(type.min)}–${formatVnd(type.max)}`
+    ));
+    const brandText = brandStats.length
+      ? brandStats.map((brand) => `${brand.name} (${brand.count})`).join(', ')
+      : 'chưa có';
+    const text = [
+      `CATALOG HIỆN CÓ (tổng ${availableProducts.length} sản phẩm còn hàng):`,
+      ...typeLines,
+      `Thương hiệu: ${brandText}`,
+      `Giá toàn catalog: ${formatVnd(catalogPriceRange.min)}–${formatVnd(catalogPriceRange.max)}`
+    ].join('\n');
+
+    return {
+      totalProducts: availableProducts.length,
+      types: typeStats.map((type) => type.name),
+      typeStats,
+      brands: brandStats,
+      priceMin: catalogPriceRange.min,
+      priceMax: catalogPriceRange.max,
+      text
+    };
+  }
+
+  getCatalogSummary() {
+    return this._catalogSummary;
+  }
+
+  catalogTypes(kind = '') {
+    const stats = this.getCatalogSummary()?.typeStats || [];
+    return stats
+      .filter((type) => !kind || type.kind === kind)
+      .map((type) => type.name);
+  }
+
+  matchCatalogTypes(rawQuery, options = {}) {
+    const query = canonicalSearchText(rawQuery);
+    if (!query) return [];
+    const kind = clean(options.kind);
+    const ignoredTokens = new Set([
+      'giay', 'vot', 'qua', 'ao', 'quan', 'balo', 'ba', 'lo', 'tui',
+      'phu', 'kien', 'the', 'thao', 'nam', 'nu', 'san', 'pham', 'khac'
+    ]);
+    const queryWords = new Set(query.split(' ').filter(Boolean));
+
+    return (this.getCatalogSummary()?.typeStats || [])
+      .filter((type) => !kind || type.kind === kind)
+      .filter((type) => {
+        if (termInText(query, type.normalized)) return true;
+        const distinctive = type.normalized
+          .split(' ')
+          .filter((token) => token.length > 1 && !ignoredTokens.has(token));
+        return distinctive.length > 0 && distinctive.every((token) => queryWords.has(token));
+      })
+      .map((type) => type.name);
   }
 
   normalizeCatalogQuery(rawQuery) {
@@ -511,10 +650,7 @@ class ProductService {
     const stopWords = new Set(['co', 'gi', 'nao', 'cho', 'toi', 'tim', 'can', 'muon', 'gia', 'bao', 'nhieu', 'tien', 'tam', 'khoang', 'duoi', 'tren', 'tu', 'den', 'san', 'pham', 'tu', 'van', 'goi', 'y', 'xem', 'chi', 'tiet']);
     const tokens = normalized.split(' ').filter((token) => token.length > 1 && !stopWords.has(token));
     const priceIntent = parsePriceIntent(query);
-    const categoryPhrases = [
-      'bong chuyen', 'bong da', 'cau long', 'chay bo', 'pickleball',
-      'tennis', 'bong ro', 'san trong nha', 'san co nhan tao'
-    ].filter((phrase) => normalized.includes(phrase));
+    const matchedCatalogTypes = this.matchCatalogTypes(query).map(canonicalSearchText);
 
     const scored = this.products.map((product) => {
       let score = 0;
@@ -529,7 +665,7 @@ class ProductService {
         else score -= 3;
       }
 
-      for (const phrase of categoryPhrases) {
+      for (const phrase of matchedCatalogTypes) {
         if (product.searchText.includes(phrase)) score += 140;
         else score -= 220;
       }
@@ -555,6 +691,118 @@ class ProductService {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map((item) => this.publicProduct(item.product));
+  }
+
+  async semanticSearch(rawQuery, limit = 8) {
+    const query = clean(rawQuery);
+    if (
+      !query
+      || !this.embeddingService?.embedText
+      || !this.embeddingService?.getVector
+      || this.embeddingService?.isConfigured?.() === false
+    ) return [];
+    const hasProductVectors = this.products.some((product) => (
+      Array.isArray(this.embeddingService.getVector(product.id))
+    ));
+    if (!hasProductVectors) return [];
+
+    const queryVector = await this.embeddingService.embedText(query, 'query');
+    const minScore = Number(this.embeddingService.config?.minScore ?? -1);
+    return this.products
+      .map((product) => ({
+        product,
+        score: cosineSimilarity(queryVector, this.embeddingService.getVector(product.id))
+      }))
+      .filter((item) => item.score >= minScore)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, Math.max(1, Number(limit || 8)))
+      .map((item) => ({
+        ...this.publicProduct(item.product),
+        semanticScore: item.score
+      }));
+  }
+
+  semanticQueryText(plan = {}, fallbackQuery = '') {
+    const search = plan?.search && typeof plan.search === 'object' ? plan.search : plan;
+    return clean([
+      search.query || fallbackQuery,
+      ...(search.customerNeeds || []),
+      ...(search.requirements || []).flatMap((group) => [group?.label, ...(group?.terms || [])]),
+      ...(search.preferences || []).flatMap((group) => [group?.label, ...(group?.terms || [])])
+    ].join(' '));
+  }
+
+  async hybridQueryByPlan(plan = {}, fallbackQuery = '', limit = 5) {
+    const search = plan?.search && typeof plan.search === 'object' ? plan.search : plan;
+    const safeLimit = Math.max(1, Math.min(12, Number(search.limit || limit || 5)));
+    const candidateLimit = Math.max(12, Math.min(40, safeLimit * 4));
+    const candidatePlan = {
+      ...plan,
+      search: { ...search, limit: candidateLimit }
+    };
+    const keywordResults = this.queryByPlan(candidatePlan, fallbackQuery, candidateLimit);
+    const exactRequest = (search.codes || []).length
+      || (search.productIds || []).length
+      || this.exactLookup(search.query || fallbackQuery);
+    const keywordSignalCount = this.search(
+      this.semanticQueryText(plan, fallbackQuery),
+      3
+    ).length;
+    const shouldUseSemantic = !exactRequest && (
+      keywordResults.length < 3
+      || keywordSignalCount < 3
+      || plan?.responseMode === 'recommend'
+    );
+    if (!shouldUseSemantic) return keywordResults.slice(0, safeLimit);
+
+    let semanticResults;
+    try {
+      semanticResults = await this.semanticSearch(
+        this.semanticQueryText(plan, fallbackQuery),
+        candidateLimit
+      );
+    } catch (error) {
+      console.warn(`[SEMANTIC_SEARCH] Dùng kết quả từ khóa vì Voyage lỗi: ${error.message}`);
+      return keywordResults.slice(0, safeLimit);
+    }
+    if (!semanticResults.length) return keywordResults.slice(0, safeLimit);
+
+    const validatedSemantic = [];
+    for (const semanticProduct of semanticResults) {
+      const validationPlan = {
+        ...plan,
+        search: {
+          ...search,
+          codes: [],
+          productIds: [semanticProduct.id],
+          limit: 1
+        }
+      };
+      const [validated] = this.queryByPlan(validationPlan, fallbackQuery, 1, {
+        strictFilters: true
+      });
+      if (validated?.id === semanticProduct.id) {
+        validatedSemantic.push({ ...validated, semanticScore: semanticProduct.semanticScore });
+      }
+    }
+
+    const fused = new Map();
+    const addRanked = (items, source) => {
+      items.forEach((product, index) => {
+        const current = fused.get(product.id) || { product, score: 0 };
+        current.score += 1 / (60 + index + 1);
+        if (source === 'semantic' && Number.isFinite(product.semanticScore)) {
+          current.score += Math.max(0, product.semanticScore) * 0.02;
+        }
+        fused.set(product.id, current);
+      });
+    };
+    addRanked(keywordResults, 'keyword');
+    addRanked(validatedSemantic, 'semantic');
+    return [...fused.values()]
+      .sort((left, right) => right.score - left.score)
+      .slice(0, safeLimit)
+      .map((item) => item.product);
   }
 
   normalizedList(value) {
@@ -617,7 +865,7 @@ class ProductService {
     })[0] || null;
   }
 
-  queryByPlan(plan = {}, fallbackQuery = '', limit = 5) {
+  queryByPlan(plan = {}, fallbackQuery = '', limit = 5, options = {}) {
     const search = plan?.search && typeof plan.search === 'object' ? plan.search : plan;
     const filters = {
       query: clean(search.query || fallbackQuery),
@@ -742,7 +990,7 @@ class ProductService {
       .slice(0, safeLimit)
       .map(({ product, matchedVariant }) => this.publicProduct(product, matchedVariant));
 
-    if (!results.length && exactResults.length) {
+    if (!results.length && exactResults.length && !options.strictFilters) {
       results = exactResults.slice(0, safeLimit).map(({ product, variant }) => this.publicProduct(product, variant));
     }
 

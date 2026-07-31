@@ -78,7 +78,7 @@ test('hiểu “giày pick” là giày pickleball, không phải vợt', () => 
     const route = ai.fallbackRoute(message);
     const results = products.queryByPlan(route, message, 5);
 
-    assert.deepEqual(route.search.categories, ['pickleball']);
+    assert.deepEqual(route.search.categories, ['Giày Pickleball']);
     assert.equal(route.search.requirements.some((group) => group.label === 'Loại sản phẩm: Giày'), true);
     assert.deepEqual(results.map((product) => product.id), ['pickle-shoe']);
   }
@@ -90,7 +90,7 @@ test('hiểu “vợt pick” là vợt pickleball và không trả giày', () =
   const route = ai.fallbackRoute(message);
   const results = products.queryByPlan(route, message, 5);
 
-  assert.deepEqual(route.search.categories, ['pickleball']);
+  assert.deepEqual(route.search.categories, ['Vợt Pickleball']);
   assert.equal(route.search.requirements.some((group) => group.label === 'Loại sản phẩm: Vợt'), true);
   assert.deepEqual(results.map((product) => product.id), ['pickle-racket']);
 });
@@ -131,7 +131,8 @@ test('câu quá mơ hồ thì hỏi lại và không tự hiện sản phẩm th
 
   assert.equal(route.responseMode, 'clarify');
   assert.equal(route.showProducts, false);
-  assert.match(route.clarificationQuestion, /bộ môn hoặc nhu cầu nào/i);
+  assert.match(route.clarificationQuestion, /danh mục hiện có/i);
+  assert.match(route.clarificationQuestion, /Bóng Đá.*Cầu Lông.*Chạy Bộ.*Pickleball/i);
   assert.deepEqual(answer.productIds, []);
   assert.equal(answer.reply, route.clarificationQuestion);
 });
@@ -142,7 +143,7 @@ test('hiểu cách hỏi tắt “giày sân 7” và loại giày FG sân 11', 
   const route = ai.fallbackRoute(message);
   const results = products.queryByPlan(route, message, 5);
 
-  assert.deepEqual(route.search.categories, ['bong da']);
+  assert.deepEqual(route.search.categories, ['Giày Bóng Đá']);
   assert.equal(route.search.requirements.some((group) => /sân 5\/7/i.test(group.label)), true);
   assert.deepEqual(route.search.excludeTerms, ['fg', 'sg']);
   assert.deepEqual(results.map((product) => product.id), ['football-shoe']);
@@ -188,7 +189,7 @@ test('AI phân tích nhu cầu TF thành bộ lọc cấu trúc rồi code khôn
   const results = products.queryByPlan(route, message, 5);
 
   assert.equal(calls, 1);
-  assert.deepEqual(route.search.categories, ['bóng đá']);
+  assert.deepEqual(route.search.categories, ['Giày Bóng Đá']);
   assert.equal(route.needFinalAi, false);
   assert.equal(route.search.requirements.some((group) => (
     group.scope === 'identity'

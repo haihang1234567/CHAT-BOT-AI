@@ -296,8 +296,29 @@ class AiService {
     }
   }
 
+  catalogSummary() {
+    return this.productService?.getCatalogSummary?.() || {
+      totalProducts: 0,
+      types: [],
+      typeStats: [],
+      brands: [],
+      text: 'CATALOG HIỆN CÓ (tổng 0 sản phẩm còn hàng).'
+    };
+  }
+
+  catalogGroundingPrompt() {
+    return [
+      'CATALOG_SUMMARY:',
+      this.catalogSummary().text,
+      'QUY TẮC CỨNG VỀ CATALOG: Đây là toàn bộ loại sản phẩm và thương hiệu có thật, còn hàng trong shop.',
+      'Không được nhắc tới, gợi ý, hay đưa ra nhận định (kể cả nhận định “X không dùng Y”) về loại sản phẩm hoặc thương hiệu không xuất hiện trong CATALOG_SUMMARY.',
+      'Nếu khách hỏi loại không có trong CATALOG_SUMMARY, chỉ được nói shop hiện chưa có loại đó; không được bịa lý do chuyên môn.'
+    ].join('\n');
+  }
+
   buildRouterSystemPrompt() {
     return [
+      this.catalogGroundingPrompt(),
       'Bạn phân tích ý định cho chatbot thể thao Green Holding Sport và chỉ trả JSON.',
       'Bạn là bộ não điều khiển hội thoại: đọc MESSAGE, NORMALIZED_MESSAGE, HISTORY và CONVERSATION_STATE rồi tự quyết định hiểu gì, hỏi gì hoặc khi nào truy vấn sản phẩm.',
       'Code chỉ xác thực JSON và truy vấn kho sau quyết định của bạn; không dựa vào câu hỏi mặc định của code để thay bạn hiểu khách.',
@@ -310,7 +331,7 @@ class AiService {
       'Không tự trả lời kiến thức trong bước này. Backend sẽ tìm nguồn rồi mới gọi AI tổng hợp.',
       'Nếu câu hỏi thiếu thông tin có thể làm chọn sai sản phẩm, responseMode=clarify và hỏi đúng một câu.',
       'consultation.ready=true chỉ khi đã đủ dữ kiện thiết yếu; nếu chưa đủ, đặt pendingField và clarificationQuestion tự nhiên, đúng loại sản phẩm.',
-      'Không đưa ví dụ bộ môn không dùng loại sản phẩm đó. Vợt không dùng cho bóng đá, chạy bộ, bóng chuyền hoặc bóng rổ.',
+      'Khi hỏi lại về loại hoặc bộ môn, chỉ liệt kê lựa chọn có thật trong CATALOG_SUMMARY.',
       'Không bắt buộc hỏi mọi thông tin. Nếu khách đã nêu loại sản phẩm, bộ môn và ít nhất một tiêu chí lọc như ngân sách, hãng, size hoặc mục đích thì có thể showProducts=true.',
       'Riêng giày bóng đá phải biết mặt sân trước khi showProducts=true.',
       'Hiểu lỗi gõ đảo ký tự và từ viết tắt theo ngữ cảnh hội thoại, kể cả khi NORMALIZED_MESSAGE chưa sửa được; không tự sửa mã sản phẩm, SKU, Barcode hoặc size.',
@@ -322,7 +343,7 @@ class AiService {
       'Khi không có pendingField, chỉ dùng HISTORY nếu khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý” hoặc đang tiếp tục nhu cầu trước đó.',
       'Giá đổi thành VND nguyên. Không viết SQL, không bịa dữ liệu và không thêm trường ngoài schema.',
       'BỘ KIẾN THỨC VÀ VÍ DỤ ĐÃ DUYỆT:',
-      buildRouterTrainingPrompt(),
+      buildRouterTrainingPrompt(this.catalogSummary()),
       'JSON_SCHEMA:',
       '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","consultation":{"ready":true,"pendingField":""},"search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"flexibleFields":["budget"],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
     ].join('\n');
@@ -518,28 +539,27 @@ class AiService {
   codeSearchRules(message) {
     const expandedMessage = expandChatSlang(message);
     const q = canonicalSearchText(expandedMessage);
-    const categoryRules = [
-      ['giay bong chuyen', /\b(giay bong chuyen|bong chuyen)\b/],
-      ['bong da', /\b(giay bong da|giay da bong|giay (?:da )?san (?:5|7|11)|bong da|san co nhan tao|futsal)\b/],
-      ['giay chay bo', /\b(giay chay bo|giay chay|chay bo|chay dia hinh|running|trail running)\b/],
-      ['giay cau long', /\b(giay cau long)\b/],
-      ['vot cau long', /\b(vot cau long)\b/],
-      ['pickleball', /\bpickleball\b/],
-      ['giay tennis', /\b(giay tennis|tennis)\b/],
-      ['giay bong ro', /\b(giay bong ro|bong ro)\b/],
-      ['bong ban', /\b(bong ban)\b/],
-      ['ao', /\b(ao|polo|tee|tank top|jacket)\b/],
-      ['quan', /\b(quan|short)\b/],
-      ['balo', /\b(balo|ba lo)\b/],
-      ['bong', /\b(bong thi dau|qua bong)\b/]
+    const productKindRules = [
+      { kind: 'shoe', label: 'Giày', terms: ['giày'], pattern: /\b(giay|sneaker|doi giay)\b/ },
+      { kind: 'racket', label: 'Vợt', terms: ['vợt'], pattern: /\b(vot)\b/ },
+      { kind: 'ball', label: 'Quả bóng', terms: ['quả bóng', 'bóng thi đấu'], pattern: /\b(qua bong|trai bong|bong thi dau)\b/ },
+      { kind: 'shirt', label: 'Áo', terms: ['áo'], pattern: /\b(ao|polo|tee|tank top|jacket)\b/ },
+      { kind: 'pants', label: 'Quần', terms: ['quần', 'short'], pattern: /\b(quan|short)\b/ },
+      { kind: 'socks', label: 'Tất', terms: ['tất', 'vớ'], pattern: /\b(tat|vo)\b/ },
+      { kind: 'bag', label: 'Balo hoặc túi', terms: ['balo', 'ba lô', 'túi'], pattern: /\b(balo|ba lo|tui)\b/ }
     ];
-    const categories = categoryRules
-      .filter(([, pattern]) => pattern.test(q))
-      .map(([name]) => name)
-      .slice(0, 8);
-    const knownBrands = this.productService?.catalogBrands?.() || [
-      'mizuno', 'jogarbola', 'promax', 'mitre', 'joma', 'zocker'
-    ];
+    const productKind = productKindRules.find((rule) => rule.pattern.test(q)) || null;
+    let catalogQuery = q;
+    if (productKind?.kind === 'shoe' && /\b(san (?:5|7|11)|co nhan tao|co tu nhien|futsal)\b/.test(q)) {
+      catalogQuery = `${catalogQuery} bong da`;
+    }
+    if (productKind?.kind === 'shoe' && /\b(giay chay|trail|dia hinh|duong mon|jogging)\b/.test(q)) {
+      catalogQuery = `${catalogQuery} chay bo`;
+    }
+    const categories = this.productService?.matchCatalogTypes?.(catalogQuery, {
+      kind: productKind?.kind || ''
+    }).slice(0, 8) || [];
+    const knownBrands = this.productService?.catalogBrands?.() || [];
     const brands = knownBrands.filter((brand) => {
       const escaped = normalizeText(brand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       return escaped && new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(q);
@@ -566,16 +586,6 @@ class AiService {
     const preferences = [];
     const excludeTerms = [];
     const customerNeeds = [];
-    const productKindRules = [
-      { kind: 'shoe', label: 'Giày', terms: ['giày'], pattern: /\b(giay|sneaker|doi giay)\b/ },
-      { kind: 'racket', label: 'Vợt', terms: ['vợt'], pattern: /\b(vot)\b/ },
-      { kind: 'ball', label: 'Quả bóng', terms: ['quả bóng', 'bóng thi đấu'], pattern: /\b(qua bong|trai bong|bong thi dau)\b/ },
-      { kind: 'shirt', label: 'Áo', terms: ['áo'], pattern: /\b(ao|polo|tee|tank top|jacket)\b/ },
-      { kind: 'pants', label: 'Quần', terms: ['quần', 'short'], pattern: /\b(quan|short)\b/ },
-      { kind: 'socks', label: 'Tất', terms: ['tất', 'vớ'], pattern: /\b(tat|vo)\b/ },
-      { kind: 'bag', label: 'Balo hoặc túi', terms: ['balo', 'ba lô', 'túi'], pattern: /\b(balo|ba lo|tui)\b/ }
-    ];
-    const productKind = productKindRules.find((rule) => rule.pattern.test(q)) || null;
     if (productKind) {
       requirements.push({
         label: `Loại sản phẩm: ${productKind.label}`,
@@ -585,7 +595,8 @@ class AiService {
       customerNeeds.push(`Đúng loại sản phẩm ${productKind.label.toLowerCase()}`);
     }
 
-    const isFootball = categories.includes('bong da');
+    const normalizedCategories = categories.map(canonicalSearchText);
+    const isFootball = normalizedCategories.some((category) => category.includes('bong da'));
     const artificialFootball = isFootball
       && /\b(san (?:5|7)|san co nhan tao|co nhan tao|dinh dam|turf)\b/.test(q);
     const naturalFootball = isFootball
@@ -619,7 +630,8 @@ class AiService {
       customerNeeds.push('Giày bóng đá trong nhà hoặc futsal');
     }
 
-    if (categories.includes('giay chay bo') && /\b(trail|dia hinh|duong mon|leo nui)\b/.test(q)) {
+    if (normalizedCategories.some((category) => category.includes('chay bo'))
+      && /\b(trail|dia hinh|duong mon|leo nui)\b/.test(q)) {
       requirements.push({
         label: 'Chạy địa hình',
         terms: ['trail', 'địa hình', 'đường mòn', 'mujin', 'daichi'],
@@ -670,6 +682,60 @@ class AiService {
       ['bag', /\b(balo|ba lo|tui)\b/]
     ];
     return rules.find(([, pattern]) => pattern.test(text))?.[0] || '';
+  }
+
+  productKindLabel(kind) {
+    return {
+      shoe: 'giày',
+      racket: 'vợt',
+      ball: 'bóng',
+      shirt: 'áo',
+      pants: 'quần',
+      socks: 'tất',
+      bag: 'balo hoặc túi'
+    }[kind] || 'sản phẩm';
+  }
+
+  catalogTypesForKind(kind = '') {
+    return this.productService?.catalogTypes?.(kind) || [];
+  }
+
+  readableCatalogType(type, kind = '') {
+    const prefixes = {
+      shoe: /^giày\s+/i,
+      racket: /^vợt\s+/i,
+      ball: /^(?:quả\s+)?bóng\s+/i,
+      shirt: /^áo\s+/i,
+      pants: /^quần\s+/i
+    };
+    return cleanString(String(type || '').replace(prefixes[kind] || /^$/, ''), 100);
+  }
+
+  joinChoices(values = []) {
+    const choices = uniqueStrings(values);
+    if (choices.length <= 1) return choices[0] || '';
+    return `${choices.slice(0, -1).join(', ')} hoặc ${choices.at(-1)}`;
+  }
+
+  catalogSportQuestion(kind = '') {
+    const availableTypes = this.catalogTypesForKind(kind);
+    const choices = availableTypes.map((type) => this.readableCatalogType(type, kind));
+    const kindLabel = this.productKindLabel(kind);
+    if (!choices.length) {
+      return `Shop hiện chưa có ${kindLabel} còn hàng trong danh mục. Bạn muốn tìm loại sản phẩm khác không?`;
+    }
+    return `Bạn cần ${kindLabel} loại nào trong danh mục hiện có: ${this.joinChoices(choices)}?`;
+  }
+
+  unavailableCatalogQuestion(message, kind = '') {
+    const requested = cleanString(message, 90);
+    const kindLabel = this.productKindLabel(kind);
+    const choices = this.catalogTypesForKind(kind)
+      .map((type) => this.readableCatalogType(type, kind));
+    const availableText = choices.length
+      ? ` Hiện shop có ${this.joinChoices(choices.map((choice) => `${kindLabel} ${choice}`))}.`
+      : ` Hiện shop chưa có ${kindLabel} nào còn hàng trong danh mục.`;
+    return `Shop hiện chưa có ${kindLabel} ${requested} trong danh mục đang bán.${availableText} Bạn muốn xem lựa chọn nào?`;
   }
 
   catalogResolution(message) {
@@ -755,7 +821,7 @@ class AiService {
     const currentRules = this.codeSearchRules(message);
     const explicitNewSubject = Boolean(currentRules.categories.length || currentRules.productKind);
     const pending = previous?.consultation?.pendingField;
-    const continuation = Boolean(pending && !explicitNewSubject);
+    const continuation = Boolean(pending && (pending === 'sport' || !explicitNewSubject));
     if (!more && !continuation) return route;
 
     const mergedSearch = this.mergeSearchState(previous.search, route.search, message);
@@ -789,6 +855,74 @@ class AiService {
     };
   }
 
+  applyCatalogCategoryGrounding(route, message, history = []) {
+    const previous = this.lastProductContext(history);
+    const pendingSport = previous?.consultation?.pendingField === 'sport';
+    const kind = this.detectedProductKind([
+      pendingSport ? previous?.search?.query : '',
+      ...(pendingSport ? previous?.search?.requirements || [] : route?.search?.requirements || [])
+        .flatMap((group) => group?.terms || []),
+      message
+    ].join(' '));
+    const routeCategories = route?.search?.categories || [];
+    const groundedRouteCategories = uniqueStrings(routeCategories.flatMap((category) => (
+      this.productService?.matchCatalogTypes?.(category, { kind }) || []
+    )));
+
+    if (pendingSport) {
+      const pendingMatches = uniqueStrings([
+        ...(this.productService?.matchCatalogTypes?.(message, { kind }) || []),
+        ...groundedRouteCategories
+      ]);
+      if (!pendingMatches.length) {
+        const undecided = /\b(khong biet|chua biet|tu van giup|loai nao cung duoc)\b/.test(
+          canonicalSearchText(message)
+        );
+        return {
+          ...route,
+          showProducts: false,
+          needFinalAi: false,
+          responseMode: 'clarify',
+          clarificationQuestion: undecided
+            ? this.catalogSportQuestion(kind)
+            : this.unavailableCatalogQuestion(message, kind),
+          consultation: { ready: false, pendingField: 'sport', aiManaged: false },
+          search: { ...route.search, categories: [] },
+          _catalogCategoryRejected: !undecided
+        };
+      }
+      return {
+        ...route,
+        search: { ...route.search, categories: pendingMatches },
+        consultation: {
+          ...(route.consultation || {}),
+          pendingField: ''
+        }
+      };
+    }
+
+    if (routeCategories.length && !groundedRouteCategories.length) {
+      if (route.showProducts) {
+        return {
+          ...route,
+          showProducts: false,
+          needFinalAi: false,
+          responseMode: 'clarify',
+          clarificationQuestion: this.unavailableCatalogQuestion(routeCategories[0], kind),
+          consultation: { ready: false, pendingField: 'sport', aiManaged: false },
+          search: { ...route.search, categories: [] },
+          _catalogCategoryRejected: true
+        };
+      }
+      return { ...route, search: { ...route.search, categories: [] } };
+    }
+
+    if (groundedRouteCategories.length) {
+      return { ...route, search: { ...route.search, categories: groundedRouteCategories } };
+    }
+    return route;
+  }
+
   consultationQuestion(route, message) {
     const productIntents = new Set([
       'search_by_code', 'search_product', 'product_detail',
@@ -820,15 +954,9 @@ class AiService {
     }
 
     if (!categories.length || categories.every((category) => ['ao', 'quan', 'balo', 'bong'].includes(category))) {
-      if (kind === 'racket') {
-        return {
-          pendingField: 'sport',
-          question: 'Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?'
-        };
-      }
       return {
         pendingField: 'sport',
-        question: `Bạn cần ${kind === 'shoe' ? 'giày' : 'sản phẩm'} cho bộ môn hoặc mục đích sử dụng nào?`
+        question: this.catalogSportQuestion(kind)
       };
     }
 
@@ -897,14 +1025,24 @@ class AiService {
       'product_recommendation', 'compare_products', 'create_order'
     ].includes(route?.intent)) return route;
 
+    if (route?._catalogCategoryRejected) return route;
+
     if (route?.responseMode === 'clarify' && route?.clarificationQuestion) {
+      const pendingField = route?.consultation?.pendingField || 'details';
+      const kind = this.detectedProductKind([
+        message,
+        ...(route?.search?.requirements || []).flatMap((group) => group.terms || [])
+      ].join(' '));
       return {
         ...route,
         showProducts: false,
         needFinalAi: false,
+        clarificationQuestion: pendingField === 'sport'
+          ? this.catalogSportQuestion(kind)
+          : route.clarificationQuestion,
         consultation: {
           ready: false,
-          pendingField: route?.consultation?.pendingField || 'details'
+          pendingField
         }
       };
     }
@@ -974,14 +1112,15 @@ class AiService {
     const contextual = this.applyConversationContext(route, message, history);
     const contextualQuery = contextual?.search?.query || message;
     const merged = this.mergeCodeRules(contextual, contextualQuery);
+    const grounded = this.applyCatalogCategoryGrounding(merged, message, history);
     const resolution = this.catalogResolution(contextualQuery);
     const consulted = this.applyConsultation({
-      ...merged,
+      ...grounded,
       corrections: resolution.corrections,
       ambiguities: resolution.ambiguous,
       search: {
-        ...merged.search,
-        query: resolution.query || merged.search.query
+        ...grounded.search,
+        query: resolution.query || grounded.search.query
       }
     }, message);
     return this.applyAmbiguityClarification(consulted, resolution.ambiguous);
@@ -997,14 +1136,10 @@ class AiService {
     );
     if (!incompleteProductQuestion || hasUsefulConstraint) return route;
 
-    const racket = rules.productKind === 'racket';
-    const kind = racket ? 'vợt' : rules.productKind === 'shoe' ? 'giày' : 'sản phẩm';
     return {
       ...route,
       responseMode: 'clarify',
-      clarificationQuestion: racket
-        ? 'Bạn muốn tìm vợt cầu lông, tennis, pickleball hay bóng bàn?'
-        : `Bạn đang tìm ${kind} cho bộ môn hoặc nhu cầu nào?`,
+      clarificationQuestion: this.catalogSportQuestion(rules.productKind),
       showProducts: false
     };
   }
@@ -1393,16 +1528,13 @@ class AiService {
 
     const kind = this.detectedProductKind([
       message,
-      ...(route?.search?.categories || []),
       ...(route?.search?.requirements || []).flatMap((group) => group.terms || [])
     ].join(' '));
-    const categoryText = canonicalSearchText((route?.search?.categories || []).join(' '));
-    const questionText = canonicalSearchText(route.clarificationQuestion);
-    if (
-      kind === 'racket'
-      && /\b(bong da|chay bo|bong chuyen|bong ro)\b/.test(`${categoryText} ${questionText}`)
-    ) {
-      return 'Quyết định ghép vợt với bộ môn không sử dụng vợt.';
+    const ungroundedCategory = (route?.search?.categories || []).find((category) => (
+      !(this.productService?.matchCatalogTypes?.(category, { kind }) || []).length
+    ));
+    if (ungroundedCategory) {
+      return `Category “${ungroundedCategory}” không tồn tại trong catalog hiện có.`;
     }
     return '';
   }
@@ -1529,6 +1661,7 @@ class AiService {
 
   buildFinalSystemPrompt() {
     return [
+      this.catalogGroundingPrompt(),
       'Bạn là nhân viên tư vấn Green Holding Sport, trả lời tự nhiên như người thật.',
       'Backend đã phân tích câu hỏi và truy vấn dữ liệu bằng code; hãy viết câu trả lời cuối thật ngắn gọn.',
       'Đối chiếu customerNeeds, requirements, preferences, excludeTerms và ngân sách trong ROUTE.',

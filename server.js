@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const config = require('./src/config');
 const JsonStore = require('./src/store');
 const { ProductService, normalizeText } = require('./src/productService');
+const { EmbeddingService } = require('./src/embeddingService');
 const HaravanService = require('./src/haravanService');
 const AiService = require('./src/aiService');
 const LocalKnowledgeService = require('./src/localKnowledgeService');
@@ -16,10 +17,12 @@ const WebKnowledgeService = require('./src/webKnowledgeService');
 const KnowledgeService = require('./src/knowledgeService');
 
 const store = new JsonStore(config.storePath);
+const embedding = new EmbeddingService(config.embedding);
 const loadCsvAtStart = config.productSource === 'csv'
   || (config.haravan.fallbackToCsv && fs.existsSync(config.productCsvPath));
 const products = new ProductService(config.productCsvPath, config.shopDomain, {
-  loadCsv: loadCsvAtStart
+  loadCsv: loadCsvAtStart,
+  embeddingService: embedding
 });
 const haravan = new HaravanService(config.haravan, products);
 const ai = new AiService(config.ai, products);
@@ -145,7 +148,7 @@ function productPageSize() {
   return Math.max(1, Math.min(5, Number(config.ai.chatProductPageSize || 3)));
 }
 
-function productPage(route, fallbackQuery = '', excludedIds = []) {
+async function productPage(route, fallbackQuery = '', excludedIds = []) {
   if (!route?.needDatabase || !route?.showProducts) {
     return { items: [], hasMore: false };
   }
@@ -162,11 +165,34 @@ function productPage(route, fallbackQuery = '', excludedIds = []) {
       limit: pageSize + 1
     }
   };
-  const matches = products.queryByPlan(pageRoute, fallbackQuery, pageSize + 1);
+  const matches = await products.hybridQueryByPlan(pageRoute, fallbackQuery, pageSize + 1);
   return {
     items: matches.slice(0, pageSize),
     hasMore: matches.length > pageSize
   };
+}
+
+let embeddingSyncPromise = null;
+async function syncProductEmbeddings(options = {}) {
+  if (!config.embedding.autoSync || !embedding.isConfigured()) {
+    return { built: 0, reused: 0, total: embedding.entries.size, skipped: true };
+  }
+  if (embeddingSyncPromise) return embeddingSyncPromise;
+  embeddingSyncPromise = embedding.syncProducts(products.products, {
+    force: Boolean(options.force),
+    onProgress: ({ built, pending, total }) => {
+      console.log(`[EMBEDDINGS] Đã tạo ${built}/${pending} vector cần cập nhật (${total} sản phẩm).`);
+    }
+  }).then((stats) => {
+    console.log(`[EMBEDDINGS] Hoàn tất: ${stats.built} mới, ${stats.reused} dùng lại, ${stats.total} tổng.`);
+    return stats;
+  }).catch((error) => {
+    console.error(`[EMBEDDINGS] Đồng bộ thất bại, chatbot vẫn dùng tìm kiếm từ khóa: ${error.message}`);
+    return { built: 0, reused: 0, total: embedding.entries.size, skipped: true, error: error.message };
+  }).finally(() => {
+    embeddingSyncPromise = null;
+  });
+  return embeddingSyncPromise;
 }
 
 function loadMoreSuggestions(suggestions = [], hasMore = false) {
@@ -263,6 +289,7 @@ async function handleApi(req, res, url) {
       routerModelConfigured: Boolean(config.ai.routerModel),
       chatModelConfigured: Boolean(config.ai.chatModel),
       aiMaxCandidates: config.ai.maxCandidates,
+      embeddings: embedding.status(),
       shopDomain: config.shopDomain
     });
   }
@@ -341,7 +368,7 @@ async function handleApi(req, res, url) {
     const shownIds = [...new Set(
       (previous.pagination.shownProductIds || []).map(String).filter(Boolean)
     )];
-    const nextPage = productPage(
+    const nextPage = await productPage(
       {
         ...previous.route,
         needDatabase: true,
@@ -441,7 +468,7 @@ async function handleApi(req, res, url) {
     if (!ai.isConfigured()) {
       const route = ai.fallbackRoute(messageText, history, 'AI chưa được cấu hình.');
       routeMeta = routeMetadata(route);
-      const page = productPage(route, messageText);
+      const page = await productPage(route, messageText);
       const candidates = page.items;
       pageHasMore = page.hasMore;
       const localResult = ai.fallbackFinal(messageText, route, candidates, 'AI chưa được cấu hình.');
@@ -526,7 +553,7 @@ async function handleApi(req, res, url) {
           ].join('+');
         } else {
           // Sản phẩm: AI chỉ xuất bộ lọc JSON; code truy vấn Haravan và dựng thẻ/biến thể.
-          const page = productPage(route, messageText);
+          const page = await productPage(route, messageText);
           const candidates = page.items;
           pageHasMore = page.hasMore;
           databaseCandidates = candidates;
@@ -720,10 +747,12 @@ async function handleApi(req, res, url) {
     }
     try {
       const stats = await haravan.sync();
+      const embeddingStats = await syncProductEmbeddings();
       return sendJson(res, 200, {
         ok: true,
         message: 'Đồng bộ Haravan thành công.',
         stats,
+        embeddings: embeddingStats,
         catalog: products.status()
       });
     } catch (error) {
@@ -880,7 +909,7 @@ async function handleApi(req, res, url) {
         );
       } else {
         candidates = route.needDatabase
-          ? products.queryByPlan(route, customerMessage.text, route.search.limit)
+          ? await products.hybridQueryByPlan(route, customerMessage.text, route.search.limit)
           : [];
         finalResult = route.needFinalAi
           ? await ai.answer(customerMessage.text, route, candidates, history, { purpose: 'admin-suggestion' })
@@ -974,21 +1003,29 @@ server.listen(config.port, '0.0.0.0', () => {
   console.log(`Admin:   http://localhost:${config.port}/admin.html`);
   console.log(`Dữ liệu: ${config.productSource === 'haravan' ? 'Haravan API' : 'CSV local'}`);
   console.log(`AI:      ${ai.isConfigured() ? 'Đã cấu hình 2 tầng (Router → Database code → Final)' : 'Chưa cấu hình - đang dùng tìm kiếm local dự phòng'}`);
+  console.log(`Vector:  ${embedding.isConfigured() ? `${config.embedding.model} (${embedding.entries.size} vector đã nạp)` : 'Chưa cấu hình VOYAGE_API_KEY'}`);
 
   if (config.productSource === 'haravan') {
     if (!haravan.isConfigured()) {
       console.error('Chưa có HARAVAN_ACCESS_TOKEN; chatbot đang giữ dữ liệu CSV dự phòng nếu có.');
+      syncProductEmbeddings();
       return;
     }
     haravan.sync()
+      .then(() => syncProductEmbeddings())
       .catch((error) => {
         console.error(`Đồng bộ Haravan ban đầu thất bại: ${error.message}`);
         console.error('Chatbot tiếp tục dùng dữ liệu đang có và sẽ tự thử lại.');
       })
       .finally(() => {
-        haravan.startAutoSync((error) => {
-          console.error(`Đồng bộ Haravan định kỳ thất bại: ${error.message}`);
-        });
+        haravan.startAutoSync(
+          (error) => {
+            console.error(`Đồng bộ Haravan định kỳ thất bại: ${error.message}`);
+          },
+          () => syncProductEmbeddings()
+        );
       });
+  } else {
+    syncProductEmbeddings();
   }
 });

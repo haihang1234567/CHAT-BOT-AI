@@ -104,10 +104,10 @@
       "expected": {
         "responseMode": "clarify",
         "showProducts": false,
-        "replyMustIncludeAny": ["cầu lông", "tennis", "pickleball", "bóng bàn"],
-        "replyMustNotInclude": ["bóng đá", "chạy bộ", "bóng chuyền", "bóng rổ"]
+        "clarificationUsesCatalogOptions": true,
+        "replyMustNotMentionMissingCatalogTypes": true
       },
-      "note": "Câu hỏi làm rõ phải phù hợp đúng loại sản phẩm."
+      "note": "Câu hỏi làm rõ chỉ được lấy loại vợt có thật, còn hàng trong catalog."
     },
     {
       "id": "contextual-pcik-racket-001",
@@ -137,14 +137,33 @@
       "note": "Ngân sách mở được coi là đã trả lời và chatbot tiếp tục tìm sản phẩm."
     },
     {
-      "id": "impossible-racket-sport-001",
-      "question": "vợt bóng chuyền",
+      "id": "missing-catalog-category-001",
+      "question": "bóng bàn",
+      "context": {
+        "pendingField": "sport",
+        "previousNeed": "vợt"
+      },
       "expected": {
         "responseMode": "clarify",
         "showProducts": false,
-        "replyMustInclude": ["bóng chuyền không dùng vợt"]
+        "replyMustInclude": ["shop hiện chưa có"],
+        "replyMustNotInclude": ["bóng bàn không dùng vợt"],
+        "clarificationUsesCatalogOptions": true
       },
-      "note": "AI nhận ra mâu thuẫn kiến thức cơ bản trước khi truy vấn kho."
+      "note": "Category không có phải được từ chối theo catalog thật, không bịa lý do kiến thức."
+    },
+    {
+      "id": "semantic-running-comfort-001",
+      "question": "tư vấn giày êm chân để đi bộ đường dài, bám đường tốt, dưới 2 triệu",
+      "expected": {
+        "intent": "product_recommendation",
+        "responseMode": "recommend",
+        "showProducts": true,
+        "semanticSearchRequired": true,
+        "maxPrice": 2000000,
+        "replyMustIncludeAny": ["êm chân", "đi bộ đường dài", "bám đường", "phù hợp"]
+      },
+      "note": "Mô tả nhu cầu không trùng tên sản phẩm phải được bổ sung bằng Voyage semantic search."
     }
   ]
 }
