@@ -139,6 +139,14 @@ function editDistance(left, right) {
   return previous[b.length];
 }
 
+function sharesCorrectionStem(input, candidate) {
+  const left = String(input || '');
+  const right = String(candidate || '');
+  if (!left || !right) return false;
+  const stemLength = Math.min(left.length, right.length) >= 4 ? 2 : 1;
+  return left.slice(0, stemLength) === right.slice(0, stemLength);
+}
+
 function termInText(text, rawTerm) {
   const term = canonicalSearchText(rawTerm);
   if (!term) return false;
@@ -323,13 +331,16 @@ class ProductService {
     this.catalogVocabulary = new Set();
     this.brandNames = unique(finalized.map((product) => canonicalSearchText(product.brand)));
     for (const product of finalized) {
-      const identityFields = [
+      const catalogFields = [
+        product.name,
         product.brand,
         product.type,
+        product.tags,
         ...(product.collections || []),
-        ...(product.collectionHandles || [])
+        ...(product.collectionHandles || []),
+        ...product.variants.flatMap((variant) => [variant.color, variant.size])
       ];
-      for (const field of identityFields) {
+      for (const field of catalogFields) {
         for (const token of canonicalSearchText(field).split(' ')) {
           if (token.length >= 3 && !/\d/.test(token)) this.catalogVocabulary.add(token);
         }
@@ -485,17 +496,25 @@ class ProductService {
       'khong', 'mau', 'muon', 'nao', 'size', 'tham', 'them', 'tren', 'xem',
       ...SLANG_EXPANSION_TOKENS
     ]);
-    const correctedTokens = canonical.split(' ').map((token) => {
+    const queryTokens = canonical.split(' ');
+    const correctedTokens = queryTokens.map((token, index) => {
       const exactCode = normalizeText(token).replace(/\s/g, '');
+      const previousToken = queryTokens[index - 1] || '';
+      const previousTwoTokens = queryTokens.slice(Math.max(0, index - 2), index).join(' ');
+      const isDeclaredAttributeValue = ['mau', 'color', 'size', 'kich thuoc', 'kich co']
+        .includes(previousToken)
+        || ['mau sac'].includes(previousTwoTokens);
       if (
         token.length < 3
         || /\d/.test(token)
         || this.codeIndex.has(exactCode)
         || protectedWords.has(token)
+        || isDeclaredAttributeValue
         || this.catalogVocabulary.has(token)
       ) return token;
 
       const ranked = [...this.catalogVocabulary]
+        .filter((candidate) => sharesCorrectionStem(token, candidate))
         .map((candidate) => {
           const prefix = candidate.startsWith(token) && token.length >= 3;
           return {

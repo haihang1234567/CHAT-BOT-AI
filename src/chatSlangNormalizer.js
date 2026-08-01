@@ -49,6 +49,7 @@ const CHAT_SLANG = new Map([
 
 const TOKEN_PATTERN = /[\p{L}\p{N}._/-]+/gu;
 const SIZE_CONTEXT = new Set(['size', 'sz', 'cỡ', 'co']);
+const COLOR_CONTEXT = new Set(['màu', 'mau', 'color']);
 
 function foldForCatalog(value) {
   return String(value || '')
@@ -82,7 +83,8 @@ function expandChatSlang(rawMessage) {
     // Không sửa mã sản phẩm, SKU, barcode hoặc giá trị size chữ.
     const looksLikeCode = /\d|[._/-]/.test(token);
     const isSizeValue = lookup.length === 1 && SIZE_CONTEXT.has(previousToken);
-    if (!looksLikeCode && !isSizeValue && CHAT_SLANG.has(lookup)) {
+    const isColorValue = lookup === 'hong' && COLOR_CONTEXT.has(previousToken);
+    if (!looksLikeCode && !isSizeValue && !isColorValue && CHAT_SLANG.has(lookup)) {
       replacement = CHAT_SLANG.get(lookup);
     }
 
