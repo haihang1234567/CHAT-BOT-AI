@@ -15,6 +15,63 @@ function variant(id, size = '') {
   };
 }
 
+test('màu và thuộc tính biến thể đúng không bị coi là lỗi chính tả', () => {
+  const products = new ProductService('', 'https://shop.example', { loadCsv: false });
+  products.replaceProducts([
+    {
+      id: 'pink-football-shoe',
+      name: 'Giày Bóng Đá Mizuno Alpha Hồng',
+      brand: 'Mizuno',
+      type: 'Giày Bóng Đá',
+      tags: 'giày đá bóng, TF',
+      collections: ['Dòng Mizuno Alpha'],
+      images: [],
+      variants: [{
+        ...variant('pink-football-shoe-v1', '42'),
+        color: 'Hồng'
+      }]
+    },
+    {
+      id: 'training-tool',
+      name: 'Dụng Cụ Tập Công Thủ',
+      type: 'Dụng Cụ',
+      images: [],
+      variants: [variant('training-tool-v1')]
+    }
+  ]);
+  const ai = new AiService({ productFinalEnabled: false }, products);
+  const message = 'giày bóng đá màu hồng mizuno có không';
+  const resolution = products.normalizeCatalogQuery(message);
+  const route = ai.fallbackRoute(message);
+
+  assert.equal(products.catalogVocabulary.has('hong'), true);
+  assert.equal(products.catalogVocabulary.has('42'), false);
+  assert.equal(resolution.query, 'giay bong da mau hong mizuno co khong');
+  assert.deepEqual(resolution.corrections, []);
+  assert.deepEqual(resolution.ambiguous, []);
+  assert.deepEqual(route.ambiguities, []);
+  assert.deepEqual(route.search.colors, ['hong']);
+  assert.doesNotMatch(route.clarificationQuestion, /“dong”|“cong”|“bong”/i);
+
+  const typo = products.normalizeCatalogQuery('giày bóng đá mizno');
+  assert.deepEqual(typo.corrections, [{ input: 'mizno', output: 'mizuno' }]);
+  assert.deepEqual(typo.ambiguous, []);
+
+  const englishColorProducts = new ProductService('', 'https://shop.example', { loadCsv: false });
+  englishColorProducts.replaceProducts([{
+    id: 'pink-shoe',
+    name: 'Hàng Mới Mizuno Pink',
+    brand: 'Mizuno',
+    type: 'Giày Bóng Đá',
+    images: [],
+    variants: [{ ...variant('pink-shoe-v1', '42'), color: 'Pink' }]
+  }]);
+  const declaredColor = englishColorProducts.normalizeCatalogQuery('giày màu hồng mizuno');
+  assert.equal(declaredColor.query, 'giay mau hong mizuno');
+  assert.deepEqual(declaredColor.corrections, []);
+  assert.deepEqual(declaredColor.ambiguous, []);
+});
+
 function createServices() {
   const products = new ProductService('', 'https://shop.example', { loadCsv: false });
   products.replaceProducts([

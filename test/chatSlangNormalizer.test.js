@@ -36,3 +36,9 @@ test('không biến từ “sao” thành size và không sửa bên trong từ 
   assert.equal(expandChatSlang('sao shop chưa rep'), 'sao shop chưa trả lời');
   assert.equal(expandChatSlang('mẫu kính không'), 'mẫu kính không');
 });
+
+test('phân biệt màu hồng với teencode hong theo ngữ cảnh', () => {
+  assert.equal(expandChatSlang('màu hong mizuno'), 'màu hong mizuno');
+  assert.equal(expandChatSlang('mau hong con hang hong'), 'mau hong con hang không');
+  assert.equal(expandChatSlang('đôi này còn hàng hong'), 'đôi này còn hàng không');
+});
