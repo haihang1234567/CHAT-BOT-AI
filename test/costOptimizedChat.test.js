@@ -75,6 +75,7 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
       if (prompt.includes('JSON_SCHEMA:')) {
         const input = routerInput(prompt);
         const knowledge = /FG và TF/i.test(input.message || '');
+        const pinkNatural = /màu hồng.*cỏ tự nhiên/i.test(input.message || '');
         result = knowledge
           ? {
               intent: 'general_question',
@@ -94,14 +95,17 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
               search: {
                 query: input.message,
                 categories: ['bóng đá'],
-                maxPrice: 2000000,
-                customerNeeds: ['Giày bóng đá sân 7 dưới 2 triệu'],
+                colors: pinkNatural ? ['hồng'] : [],
+                maxPrice: pinkNatural ? null : 2000000,
+                customerNeeds: pinkNatural
+                  ? ['Giày bóng đá màu hồng sân cỏ tự nhiên']
+                  : ['Giày bóng đá sân 7 dưới 2 triệu'],
                 requirements: [{
-                  label: 'Sân cỏ nhân tạo',
-                  terms: ['TF', 'AS', 'cỏ nhân tạo'],
+                  label: pinkNatural ? 'Sân cỏ tự nhiên' : 'Sân cỏ nhân tạo',
+                  terms: pinkNatural ? ['FG', 'SG', 'cỏ tự nhiên'] : ['TF', 'AS', 'cỏ nhân tạo'],
                   scope: 'identity'
                 }],
-                excludeTerms: ['FG', 'SG'],
+                excludeTerms: pinkNatural ? ['TF', 'AS'] : ['FG', 'SG'],
                 limit: 3
               }
             };
@@ -225,6 +229,21 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
     assert.ok(product.products[0].images.length > 0);
     assert.ok(product.products[0].variants.length > 0);
 
+    const unavailableResponse = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'unavailable-color-test',
+        message: 'Tìm giày đá bóng màu hồng sân cỏ tự nhiên'
+      })
+    });
+    const unavailable = await unavailableResponse.json();
+    assert.equal(unavailableResponse.status, 200);
+    assert.equal(aiPrompts.length, 3, 'Không được gọi Final AI khi kho không có sản phẩm khớp');
+    assert.deepEqual(unavailable.products, []);
+    assert.deepEqual(unavailable.suggestions, []);
+    assert.match(unavailable.reply, /chưa có.*màu hồng/i);
+
     const knowledgeResponse = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -235,7 +254,7 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
     });
     const knowledge = await knowledgeResponse.json();
     assert.equal(knowledgeResponse.status, 200);
-    assert.equal(aiPrompts.length, 4);
+    assert.equal(aiPrompts.length, 5);
     assert.equal(webCalls, 1);
     assert.deepEqual(knowledge.products, []);
     assert.equal(knowledge.sources.length, 2);

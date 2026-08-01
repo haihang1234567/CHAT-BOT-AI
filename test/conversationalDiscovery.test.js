@@ -432,3 +432,42 @@ test('khách bổ sung bộ lọc ở tin sau vẫn giữ nhu cầu đã chốt 
   assert.ok(refinedRoute.search.categories.some((category) => /chạy bộ/i.test(category)));
   assert.deepEqual(results.map((item) => item.id), ['run-pink']);
 });
+
+test('không có đúng màu sau câu trả lời mặt sân thì báo hết và không gửi màu khác', () => {
+  const products = new ProductService('', 'https://shop.example', { loadCsv: false });
+  products.replaceProducts([
+    {
+      ...product('fg-unknown', 'Giày Bóng Đá Mizuno FG Xám', 'Giày Bóng Đá', 'Mizuno'),
+      tags: 'FG cỏ tự nhiên',
+      variants: [{
+        id: 'fg-unknown-v1', sku: 'fg-unknown-sku', color: '', size: '42',
+        quantity: 5, inStock: true, price: 1499000
+      }]
+    },
+    {
+      ...product('fg-red', 'Giày Bóng Đá Mizuno FG Red Ruby', 'Giày Bóng Đá', 'Mizuno'),
+      tags: 'FG cỏ tự nhiên',
+      variants: [{
+        id: 'fg-red-v1', sku: 'fg-red-sku', color: 'Đỏ', size: '42',
+        quantity: 5, inStock: true, price: 2970000
+      }]
+    }
+  ]);
+  const ai = new AiService({ productFinalEnabled: false, maxCandidates: 5 }, products);
+  const first = ai.fallbackRoute('giày đá bóng màu hồng');
+  const history = [
+    { role: 'user', text: 'giày đá bóng màu hồng' },
+    { role: 'assistant', text: first.clarificationQuestion, route: first }
+  ];
+
+  const route = ai.fallbackRoute('cỏ tự nhiên', history);
+  const results = products.queryByPlan(route, 'cỏ tự nhiên', 5);
+  const answer = ai.fallbackFinal('cỏ tự nhiên', route, results);
+
+  assert.deepEqual(route.search.colors, ['hong']);
+  assert.deepEqual(results, []);
+  assert.deepEqual(answer.productIds, []);
+  assert.deepEqual(answer.suggestions, []);
+  assert.match(answer.reply, /chưa có.*màu hồng/i);
+  assert.match(answer.reply, /không hiển thị sản phẩm khác màu/i);
+});
