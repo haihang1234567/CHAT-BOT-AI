@@ -241,7 +241,7 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
     assert.equal(unavailableResponse.status, 200);
     assert.equal(aiPrompts.length, 3, 'Không được gọi Final AI khi kho không có sản phẩm khớp');
     assert.deepEqual(unavailable.products, []);
-    assert.deepEqual(unavailable.suggestions, []);
+    assert.deepEqual(unavailable.suggestions.map((item) => item.label), ['Bỏ lọc màu']);
     assert.match(unavailable.reply, /chưa có.*màu hồng/i);
 
     const knowledgeResponse = await fetch(`${baseUrl}/api/chat`, {

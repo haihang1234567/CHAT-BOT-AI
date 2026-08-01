@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 – AI điều phối và SQL catalog
+
+- Router AI chọn rõ `ASK`, `SEARCH`, `ANSWER` hoặc `HANDOFF` và quản lý dữ kiện qua nhiều lượt chat.
+- Thêm Catalog Profile động lấy type, hãng, màu, size, giá và mẫu đại diện từ Haravan.
+- Dựng SQLite catalog cache sau mỗi lần đồng bộ Haravan; mọi truy vấn đều tham số hóa.
+- Thêm Evidence Gate kiểm chứng điều kiện cứng trước khi gửi thẻ sản phẩm.
+- Voyage chỉ bổ sung ứng viên theo ngữ nghĩa; không được vượt bộ lọc SQL.
+- Không tự nới màu/hãng/size/ngân sách khi hết kết quả; chỉ nới sau khi khách đồng ý.
+- Thêm báo cáo chất lượng catalog tại `/api/admin/catalog-quality`.
+
 ## 1.3.0 – AI hai tầng
 
 - Thêm AI Router gọi lần 1 để nhận dạng ý định và xuất bộ lọc JSON.

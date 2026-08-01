@@ -1,4 +1,7 @@
 node_modules/
+data/catalog.sqlite
+data/catalog.sqlite-shm
+data/catalog.sqlite-wal
 .env
 data/local-store.json
 data/local-store.json.tmp

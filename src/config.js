@@ -7,6 +7,11 @@ function resolveProjectPath(value, fallback) {
     : path.resolve(__dirname, '..', candidate);
 }
 
+function resolveCatalogDbPath(value) {
+  const candidate = String(value || ':memory:').trim();
+  return candidate === ':memory:' ? candidate : resolveProjectPath(candidate, './data/catalog.sqlite');
+}
+
 function booleanValue(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
@@ -42,6 +47,7 @@ module.exports = {
   port: Number(process.env.PORT || 3100),
   shopDomain: String(process.env.SHOP_DOMAIN || 'https://www.greenholdingsport.vn').replace(/\/$/, ''),
   storePath: resolveProjectPath(process.env.STORE_PATH, './data/local-store.json'),
+  catalogDbPath: resolveCatalogDbPath(process.env.CATALOG_DB_PATH),
   adminPassword: String(process.env.ADMIN_PASSWORD || ''),
   productSource: 'haravan',
   haravan: {

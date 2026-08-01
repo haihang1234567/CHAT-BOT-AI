@@ -164,6 +164,39 @@
         "replyMustIncludeAny": ["êm chân", "đi bộ đường dài", "bám đường", "phù hợp"]
       },
       "note": "Mô tả nhu cầu không trùng tên sản phẩm phải được bổ sung bằng Voyage semantic search."
+    },
+    {
+      "id": "ai-action-search-broad-list-001",
+      "question": "cho mình tất cả giày chạy bộ dưới 1 triệu rưỡi",
+      "expected": {
+        "action": "SEARCH",
+        "showProducts": true,
+        "maxPrice": 1500000,
+        "mustNotAskBrandOrSize": true
+      },
+      "note": "Loại hàng, bộ môn và ngân sách đã đủ để trả danh sách; AI không hỏi máy móc."
+    },
+    {
+      "id": "ai-action-ask-material-detail-001",
+      "question": "tư vấn giày đá bóng cho mình",
+      "expected": {
+        "action": "ASK",
+        "showProducts": false,
+        "missingFieldsIncludes": ["surface"],
+        "singleClarificationQuestion": true
+      },
+      "note": "AI hỏi thêm khi thông tin thiếu có thể làm sai công năng sản phẩm."
+    },
+    {
+      "id": "zero-result-no-auto-relax-001",
+      "question": "giày bóng đá Mizuno màu hồng size 42 sân cỏ tự nhiên dưới 2 triệu",
+      "expected": {
+        "action": "SEARCH",
+        "preserveAllHardConstraints": true,
+        "zeroResultShowsNoProducts": true,
+        "relaxOnlyAfterConsent": true
+      },
+      "note": "Hết hàng đúng tiêu chí phải báo thật và xin phép trước khi nới điều kiện."
     }
   ]
 }
