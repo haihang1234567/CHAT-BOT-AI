@@ -556,7 +556,7 @@ async function handleApi(req, res, url) {
           pageHasMore = page.hasMore;
           databaseCandidates = candidates;
 
-          if (route.needFinalAi) {
+          if (route.needFinalAi && candidates.length) {
           // LẦN GỌI AI 2: chỉ nhận kết quả database đã rút gọn và soạn câu trả lời cuối.
             const finalResult = await ai.answer(messageText, route, candidates, history);
             const selectedProducts = productCardsByIds(finalResult.productIds, candidates);

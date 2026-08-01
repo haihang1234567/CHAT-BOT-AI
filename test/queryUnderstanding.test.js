@@ -72,6 +72,39 @@ test('màu và thuộc tính biến thể đúng không bị coi là lỗi chín
   assert.deepEqual(declaredColor.ambiguous, []);
 });
 
+test('biến thể thiếu màu không được khớp với yêu cầu màu cụ thể', () => {
+  const products = new ProductService('', 'https://shop.example', { loadCsv: false });
+  products.replaceProducts([
+    {
+      id: 'unknown-color',
+      name: 'Giày Bóng Đá Mizuno FG chưa khai báo màu',
+      type: 'Giày Bóng Đá',
+      images: [],
+      variants: [{ ...variant('unknown-color-v1', '42'), color: '' }]
+    },
+    {
+      id: 'red-color',
+      name: 'Giày Bóng Đá Mizuno FG Đỏ',
+      type: 'Giày Bóng Đá',
+      images: [],
+      variants: [{ ...variant('red-color-v1', '42'), color: 'Đỏ' }]
+    },
+    {
+      id: 'pink-color',
+      name: 'Giày Bóng Đá Mizuno FG Hồng',
+      type: 'Giày Bóng Đá',
+      images: [],
+      variants: [{ ...variant('pink-color-v1', '42'), color: 'Hồng' }]
+    }
+  ]);
+
+  const results = products.queryByPlan({
+    search: { categories: ['Giày Bóng Đá'], colors: ['hồng'], limit: 5 }
+  }, '', 5);
+
+  assert.deepEqual(results.map((product) => product.id), ['pink-color']);
+});
+
 function createServices() {
   const products = new ProductService('', 'https://shop.example', { loadCsv: false });
   products.replaceProducts([

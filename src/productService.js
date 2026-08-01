@@ -721,12 +721,14 @@ class ProductService {
     if (filters.inStockOnly && !variant.inStock) return false;
 
     if (filters.colors.length) {
-      const color = normalizeText(variant.color);
-      if (!filters.colors.some((wanted) => color.includes(wanted) || wanted.includes(color))) return false;
+      const color = canonicalSearchText(variant.color);
+      // Thuộc tính rỗng là dữ liệu chưa biết, tuyệt đối không được coi là khớp mọi màu.
+      if (!color || !filters.colors.some((wanted) => termInText(color, wanted))) return false;
     }
 
     if (filters.sizes.length) {
       const size = normalizeText(variant.size).replace(/\s/g, '');
+      if (!size) return false;
       if (!filters.sizes.some((wanted) => {
         const normalizedWanted = wanted.replace(/\s/g, '');
         return size === normalizedWanted || size.includes(normalizedWanted) || normalizedWanted.includes(size);

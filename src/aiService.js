@@ -1414,11 +1414,25 @@ class AiService {
     }
 
     if (!candidates.length) {
-      const analyzedNeeds = cleanList(route?.search?.customerNeeds, 4, 100);
-      const needText = analyzedNeeds.length ? ` theo yêu cầu: ${analyzedNeeds.join(', ')}` : '';
+      const search = route?.search || {};
+      const colorLabels = {
+        trang: 'trắng', den: 'đen', do: 'đỏ', xanh: 'xanh', vang: 'vàng',
+        hong: 'hồng', tim: 'tím', cam: 'cam', xam: 'xám', nau: 'nâu', be: 'be'
+      };
+      const criteria = uniqueStrings([
+        ...cleanList(search.categories, 2, 100),
+        ...cleanList(search.brands, 2, 80),
+        ...cleanList(search.colors, 3, 40).map((color) => (
+          `màu ${colorLabels[normalizeText(color)] || color}`
+        )),
+        ...cleanList(search.sizes, 3, 40).map((size) => `size ${size}`),
+        ...cleanList(search.customerNeeds, 4, 100)
+          .filter((need) => !/^đúng loại sản phẩm/i.test(need))
+      ]);
+      const needText = criteria.length ? ` đáp ứng đồng thời ${criteria.join(', ')}` : '';
       reply = route?.consultation?.mode === 'more'
         ? 'Mình chưa tìm thấy thêm sản phẩm nào đáp ứng nguyên các tiêu chí trước đó. Bạn có muốn mở rộng ngân sách, đổi thương hiệu hoặc bỏ bớt một điều kiện không?'
-        : `Mình chưa tìm thấy sản phẩm đáp ứng đủ${needText} trong kho hiện tại. Mình không thay bằng sản phẩm sai bộ môn hoặc sai điều kiện; bạn có thể đổi một tiêu chí hoặc gõ “admin” để nhân viên kiểm tra thêm.`;
+        : `Shop hiện chưa có sản phẩm${needText} trong kho. Mình sẽ không hiển thị sản phẩm khác màu hoặc sai điều kiện.`;
     } else if (candidates.length === 1) {
       reply = `${correctionText}Mình đã tìm thấy “${candidates[0].name}”. Bạn có thể mở sản phẩm bên dưới để xem màu, size và biến thể.`;
     } else {
@@ -1429,7 +1443,7 @@ class AiService {
     return {
       reply,
       productIds,
-      suggestions: this.fallbackSuggestions(message, route, candidates),
+      suggestions: candidates.length ? this.fallbackSuggestions(message, route, candidates) : [],
       needsAdmin: false,
       _source: 'code-final-fallback',
       _warning: cleanString(warning, 500)
