@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { once } = require('events');
 const { spawn } = require('child_process');
+const { createHaravanProduct, startHaravanStub } = require('./helpers/haravanStub');
 
 async function availablePort() {
   const server = http.createServer();
@@ -30,44 +31,25 @@ async function waitForServer(baseUrl, child) {
   throw new Error('Server kiểm thử không khởi động.');
 }
 
-function productCsv() {
-  const header = [
-    'Mã sản phẩm', 'Mã biến thể', 'Url', 'Tên', 'Mô tả', 'Trích dẫn', 'Hãng',
-    'Loại sản phẩm', 'Tag', 'Thuộc tính 1', 'Giá trị thuộc tính 1',
-    'Thuộc tính 2', 'Giá trị thuộc tính 2', 'Mã phiên bản sản phẩm',
-    'Số lượng tồn kho', 'Giá', 'Giá so sánh', 'Link hình'
-  ].join(',');
-  const rows = Array.from({ length: 7 }, (_, index) => {
-    const number = index + 1;
-    return [
-      `pickle-shoe-${number}`,
-      `pickle-shoe-${number}-v1`,
-      `giay-pickleball-${number}`,
-      `Giày Pickleball Mẫu ${number}`,
-      'Giày thi đấu pickleball',
-      'Phù hợp chơi pickleball',
-      'Promax',
-      'Giày Pickleball',
-      'pickleball',
-      'Màu',
-      'Trắng',
-      'Size',
-      '42',
-      `PICK-${number}-42`,
-      '5',
-      String(600000 + number * 10000),
-      String(700000 + number * 10000),
-      `https://cdn.example.com/pickle-${number}.jpg`
-    ].join(',');
-  });
-  return [header, ...rows].join('\n');
-}
-
 test('nút Xem thêm phân trang toàn bộ sản phẩm bằng code và không gọi thêm AI', async () => {
   const [port, aiPort] = await Promise.all([availablePort(), availablePort()]);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghs-pagination-'));
-  const productCsvPath = path.join(tempDir, 'products.csv');
-  fs.writeFileSync(productCsvPath, productCsv());
+  const haravanStub = await startHaravanStub(Array.from({ length: 7 }, (_, index) => {
+    const number = index + 1;
+    return createHaravanProduct({
+      id: `pickle-shoe-${number}`,
+      name: `Giày Pickleball Mẫu ${number}`,
+      handle: `giay-pickleball-${number}`,
+      brand: 'Promax',
+      type: 'Giày Pickleball',
+      tags: 'pickleball',
+      description: 'Giày thi đấu pickleball',
+      sku: `PICK-${number}-42`,
+      price: 600000 + number * 10000,
+      compareAtPrice: 700000 + number * 10000,
+      image: `https://cdn.example.com/pickle-${number}.jpg`
+    });
+  }));
   let aiCalls = 0;
 
   const aiStub = http.createServer((req, res) => {
@@ -118,11 +100,9 @@ test('nút Xem thêm phân trang toàn bộ sản phẩm bằng code và không 
     cwd: path.resolve(__dirname, '..'),
     env: {
       ...process.env,
+      ...haravanStub.env,
       PORT: String(port),
       STORE_PATH: path.join(tempDir, 'store.json'),
-      PRODUCT_SOURCE: 'csv',
-      PRODUCT_CSV_PATH: productCsvPath,
-      HARAVAN_ACCESS_TOKEN: '',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${aiPort}`,
       ANTHROPIC_AUTH_TOKEN: 'test-token',
       AI_MODEL: 'test-haiku',
@@ -191,6 +171,7 @@ test('nút Xem thêm phân trang toàn bộ sản phẩm bằng code và không 
     if (child.exitCode === null) await once(child, 'exit');
     aiStub.closeAllConnections?.();
     await new Promise((resolve) => aiStub.close(resolve));
+    await haravanStub.close();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

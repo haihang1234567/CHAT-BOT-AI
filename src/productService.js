@@ -1,63 +1,5 @@
-const fs = require('fs');
 const { SLANG_EXPANSION_TOKENS } = require('./chatSlangNormalizer');
 const { cosineSimilarity } = require('./embeddingService');
-
-
-function forEachCsvObject(input, callback) {
-  const text = String(input || '').replace(/^\uFEFF/, '');
-  let headers = null;
-  let row = [];
-  let field = '';
-  let quoted = false;
-
-  const consumeRow = () => {
-    if (!row.some((value) => value !== '')) {
-      row = [];
-      return;
-    }
-
-    if (!headers) {
-      headers = row.map((header) => header.trim());
-    } else {
-      const object = {};
-      headers.forEach((header, index) => { object[header] = row[index] ?? ''; });
-      callback(object);
-    }
-    row = [];
-  };
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"') {
-        if (text[index + 1] === '"') {
-          field += '"';
-          index += 1;
-        } else {
-          quoted = false;
-        }
-      } else {
-        field += char;
-      }
-      continue;
-    }
-
-    if (char === '"') quoted = true;
-    else if (char === ',') {
-      row.push(field);
-      field = '';
-    } else if (char === '\n') {
-      row.push(field.replace(/\r$/, ''));
-      field = '';
-      consumeRow();
-    } else {
-      field += char;
-    }
-  }
-
-  row.push(field.replace(/\r$/, ''));
-  consumeRow();
-}
 
 function clean(value) {
   if (value === null || value === undefined) return '';
@@ -200,8 +142,7 @@ function catalogProductKind(value) {
 }
 
 class ProductService {
-  constructor(csvPath, shopDomain, options = {}) {
-    this.csvPath = csvPath;
+  constructor(_legacyCsvPath, shopDomain, options = {}) {
     this.shopDomain = shopDomain;
     this.products = [];
     this.productById = new Map();
@@ -213,61 +154,6 @@ class ProductService {
     this.lastLoadedAt = null;
     this.embeddingService = options.embeddingService || null;
     this._catalogSummary = this.buildCatalogSummary();
-    if (options.loadCsv !== false) this.load();
-  }
-
-  load() {
-    if (!fs.existsSync(this.csvPath)) {
-      throw new Error(`Không tìm thấy file CSV: ${this.csvPath}`);
-    }
-
-    const grouped = new Map();
-    let rowCount = 0;
-    forEachCsvObject(fs.readFileSync(this.csvPath, 'utf8'), (row) => {
-      rowCount += 1;
-      const productId = clean(row['Mã sản phẩm']);
-      if (!productId) return;
-
-      let product = grouped.get(productId);
-      if (!product) {
-        const slug = clean(row['Url']);
-        product = {
-          id: productId,
-          name: clean(row['Tên']) || `Sản phẩm ${productId}`,
-          slug,
-          url: slug ? `${this.shopDomain}/products/${slug.replace(/^\/+/, '')}` : this.shopDomain,
-          brand: clean(row['Hãng']),
-          type: clean(row['Loại sản phẩm']),
-          tags: clean(row['Tag']),
-          description: stripHtml(row['Mô tả']),
-          excerpt: clean(row['Trích dẫn']) || clean(row['SEO Description']),
-          images: [],
-          variants: []
-        };
-        grouped.set(productId, product);
-      }
-
-      const color = this.pickAttribute(row, ['Màu', 'Màu sắc', 'Color']);
-      const size = this.pickAttribute(row, ['Size', 'Kích thước', 'Kích cỡ']);
-      const variant = {
-        id: clean(row['Mã biến thể']),
-        sku: clean(row['Mã phiên bản sản phẩm']),
-        barcode: clean(row['Barcode']),
-        color,
-        size,
-        quantity: numberValue(row['Số lượng tồn kho']),
-        inStock: numberValue(row['Số lượng tồn kho']) > 0,
-        price: numberValue(row['Giá']),
-        compareAtPrice: numberValue(row['Giá so sánh']),
-        image: clean(row['Ảnh biến thể']) || clean(row['Link hình'])
-      };
-
-      product.variants.push(variant);
-      product.images.push(clean(row['Ảnh biến thể']), clean(row['Link hình']));
-    });
-
-    this.replaceProducts([...grouped.values()], 'csv');
-    console.log(`Đã nạp ${rowCount} dòng biến thể / ${this.products.length} sản phẩm từ CSV.`);
   }
 
   replaceProducts(products, source = 'memory') {
@@ -549,21 +435,6 @@ class ProductService {
       corrections,
       ambiguous
     };
-  }
-
-  pickAttribute(row, acceptedNames) {
-    for (let index = 1; index <= 3; index += 1) {
-      const key = clean(row[`Thuộc tính ${index}`]);
-      if (!key) continue;
-      const normalizedKey = normalizeText(key);
-      if (acceptedNames.some((name) => {
-        const acceptedName = normalizeText(name);
-        return normalizedKey === acceptedName || normalizedKey.startsWith(`${acceptedName} `);
-      })) {
-        return clean(row[`Giá trị thuộc tính ${index}`]);
-      }
-    }
-    return '';
   }
 
   finalizeProduct(product) {

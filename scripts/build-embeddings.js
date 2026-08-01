@@ -1,5 +1,3 @@
-const fs = require('fs');
-
 const loadEnv = require('../src/env');
 loadEnv();
 
@@ -14,24 +12,14 @@ async function main() {
     throw new Error('Thiếu VOYAGE_API_KEY hoặc VOYAGE_EMBEDDING_ENABLED=false.');
   }
 
-  const loadCsv = config.productSource === 'csv'
-    || (config.haravan.fallbackToCsv && fs.existsSync(config.productCsvPath));
-  const products = new ProductService(config.productCsvPath, config.shopDomain, {
-    loadCsv,
+  const products = new ProductService('', config.shopDomain, {
+    loadCsv: false,
     embeddingService: embedding
   });
 
-  if (config.productSource === 'haravan') {
-    const haravan = new HaravanService(config.haravan, products);
-    if (!haravan.isConfigured()) {
-      if (!products.products.length) {
-        throw new Error('PRODUCT_SOURCE=haravan nhưng chưa có HARAVAN_ACCESS_TOKEN và không có CSV dự phòng.');
-      }
-      console.warn('[EMBEDDINGS] Chưa có HARAVAN_ACCESS_TOKEN; đang dùng CSV dự phòng.');
-    } else {
-      await haravan.sync();
-    }
-  }
+  const haravan = new HaravanService(config.haravan, products);
+  if (!haravan.isConfigured()) throw new Error('Thiếu HARAVAN_ACCESS_TOKEN.');
+  await haravan.sync();
 
   if (!products.products.length) throw new Error('Catalog không có sản phẩm để tạo embedding.');
   const force = process.argv.includes('--force');

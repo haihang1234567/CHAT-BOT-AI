@@ -7,6 +7,7 @@ const net = require('node:net');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { once } = require('node:events');
+const { createHaravanProduct, startHaravanStub } = require('./helpers/haravanStub');
 
 async function availablePort() {
   const server = net.createServer();
@@ -36,14 +37,19 @@ async function waitForServer(baseUrl, child) {
 test('admin tìm và gửi thẻ sản phẩm vào đúng cuộc trò chuyện', async () => {
   const port = await availablePort();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghs-admin-products-'));
+  const haravanStub = await startHaravanStub([createHaravanProduct({
+    id: 'mizuno-admin-product',
+    name: 'Giày Mizuno kiểm thử',
+    type: 'Giày thể thao',
+    tags: 'mizuno'
+  })]);
   const child = spawn(process.execPath, ['server.js'], {
     cwd: path.resolve(__dirname, '..'),
     env: {
       ...process.env,
+      ...haravanStub.env,
       PORT: String(port),
       STORE_PATH: path.join(tempDir, 'store.json'),
-      PRODUCT_SOURCE: 'csv',
-      HARAVAN_ACCESS_TOKEN: '',
       ANTHROPIC_AUTH_TOKEN: '',
       AI_MODEL: '',
       AI_ROUTER_MODEL: '',
@@ -106,6 +112,7 @@ test('admin tìm và gửi thẻ sản phẩm vào đúng cuộc trò chuyện',
   } finally {
     child.kill('SIGTERM');
     if (child.exitCode === null) await once(child, 'exit');
+    await haravanStub.close();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -113,6 +120,12 @@ test('admin tìm và gửi thẻ sản phẩm vào đúng cuộc trò chuyện',
 test('AI chỉ tạo bản nháp khi Admin bấm gợi ý và không tự gửi cho khách', async () => {
   const [port, aiPort] = await Promise.all([availablePort(), availablePort()]);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghs-admin-ai-suggestion-'));
+  const haravanStub = await startHaravanStub([createHaravanProduct({
+    id: 'mizuno-volleyball-product',
+    name: 'Giày Bóng Chuyền Mizuno kiểm thử',
+    type: 'Giày Bóng Chuyền',
+    tags: 'mizuno bóng chuyền'
+  })]);
   let aiCallCount = 0;
   let suggestedProductId = '';
 
@@ -153,10 +166,9 @@ test('AI chỉ tạo bản nháp khi Admin bấm gợi ý và không tự gửi 
     cwd: path.resolve(__dirname, '..'),
     env: {
       ...process.env,
+      ...haravanStub.env,
       PORT: String(port),
       STORE_PATH: path.join(tempDir, 'store.json'),
-      PRODUCT_SOURCE: 'csv',
-      HARAVAN_ACCESS_TOKEN: '',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${aiPort}`,
       ANTHROPIC_AUTH_TOKEN: 'test-token',
       AI_MODEL: 'test-haiku',
@@ -235,6 +247,7 @@ test('AI chỉ tạo bản nháp khi Admin bấm gợi ý và không tự gửi 
     if (child.exitCode === null) await once(child, 'exit');
     aiStub.closeAllConnections?.();
     await new Promise((resolve) => aiStub.close(resolve));
+    await haravanStub.close();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

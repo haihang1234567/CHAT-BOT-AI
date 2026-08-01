@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { once } = require('events');
 const { spawn } = require('child_process');
+const { createHaravanProduct, startHaravanStub } = require('./helpers/haravanStub');
 
 async function availablePort() {
   const server = http.createServer();
@@ -45,11 +46,20 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
     availablePort()
   ]);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghs-cost-flow-'));
-  const productCsvPath = path.join(tempDir, 'products.csv');
-  fs.writeFileSync(productCsvPath, [
-    'Mã sản phẩm,Mã biến thể,Url,Tên,Mô tả,Trích dẫn,Hãng,Loại sản phẩm,Tag,Thuộc tính 1,Giá trị thuộc tính 1,Thuộc tính 2,Giá trị thuộc tính 2,Mã phiên bản sản phẩm,Số lượng tồn kho,Giá,Giá so sánh,Link hình',
-    'football-tf,football-tf-v1,giay-bong-da-mizuno-sala-tf,Giày Bóng Đá Mizuno Sala TF,Đế TF phù hợp sân cỏ nhân tạo 5-7 người,Form êm cho sân 7,Mizuno,Giày Bóng Đá,"bóng đá TF sân 7",Màu,Đen,Size,42,SP-TF-42,5,1499000,1700000,https://cdn.example.com/football-tf.jpg'
-  ].join('\n'));
+  const haravanStub = await startHaravanStub([createHaravanProduct({
+    id: 'football-tf',
+    name: 'Giày Bóng Đá Mizuno Sala TF',
+    handle: 'giay-bong-da-mizuno-sala-tf',
+    brand: 'Mizuno',
+    type: 'Giày Bóng Đá',
+    tags: 'bóng đá TF sân 7',
+    description: 'Đế TF phù hợp sân cỏ nhân tạo 5-7 người. Form êm cho sân 7.',
+    color: 'Đen',
+    sku: 'SP-TF-42',
+    price: 1499000,
+    compareAtPrice: 1700000,
+    image: 'https://cdn.example.com/football-tf.jpg'
+  })]);
   const aiPrompts = [];
   let webCalls = 0;
 
@@ -171,11 +181,9 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
     cwd: path.resolve(__dirname, '..'),
     env: {
       ...process.env,
+      ...haravanStub.env,
       PORT: String(port),
       STORE_PATH: path.join(tempDir, 'store.json'),
-      PRODUCT_SOURCE: 'csv',
-      PRODUCT_CSV_PATH: productCsvPath,
-      HARAVAN_ACCESS_TOKEN: '',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${aiPort}`,
       ANTHROPIC_AUTH_TOKEN: 'test-token',
       AI_MODEL: 'test-haiku',
@@ -245,6 +253,7 @@ test('product tư vấn gọi router + final có lý do; knowledge tìm web rồ
       new Promise((resolve) => aiStub.close(resolve)),
       new Promise((resolve) => webStub.close(resolve))
     ]);
+    await haravanStub.close();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

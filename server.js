@@ -18,10 +18,8 @@ const KnowledgeService = require('./src/knowledgeService');
 
 const store = new JsonStore(config.storePath);
 const embedding = new EmbeddingService(config.embedding);
-const loadCsvAtStart = config.productSource === 'csv'
-  || (config.haravan.fallbackToCsv && fs.existsSync(config.productCsvPath));
-const products = new ProductService(config.productCsvPath, config.shopDomain, {
-  loadCsv: loadCsvAtStart,
+const products = new ProductService('', config.shopDomain, {
+  loadCsv: false,
   embeddingService: embedding
 });
 const haravan = new HaravanService(config.haravan, products);
@@ -739,9 +737,6 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === 'POST' && pathname === '/api/admin/catalog-sync') {
-    if (config.productSource !== 'haravan') {
-      return sendJson(res, 400, { error: 'PRODUCT_SOURCE hiện không đặt là haravan.' });
-    }
     if (!haravan.isConfigured()) {
       return sendJson(res, 400, { error: 'Chưa cấu hình HARAVAN_ACCESS_TOKEN.' });
     }
@@ -998,34 +993,31 @@ setInterval(() => {
   }
 }, 25_000).unref();
 
-server.listen(config.port, '0.0.0.0', () => {
-  console.log(`Chatbot: http://localhost:${config.port}`);
-  console.log(`Admin:   http://localhost:${config.port}/admin.html`);
-  console.log(`Dữ liệu: ${config.productSource === 'haravan' ? 'Haravan API' : 'CSV local'}`);
-  console.log(`AI:      ${ai.isConfigured() ? 'Đã cấu hình 2 tầng (Router → Database code → Final)' : 'Chưa cấu hình - đang dùng tìm kiếm local dự phòng'}`);
-  console.log(`Vector:  ${embedding.isConfigured() ? `${config.embedding.model} (${embedding.entries.size} vector đã nạp)` : 'Chưa cấu hình VOYAGE_API_KEY'}`);
-
-  if (config.productSource === 'haravan') {
-    if (!haravan.isConfigured()) {
-      console.error('Chưa có HARAVAN_ACCESS_TOKEN; chatbot đang giữ dữ liệu CSV dự phòng nếu có.');
-      syncProductEmbeddings();
-      return;
-    }
-    haravan.sync()
-      .then(() => syncProductEmbeddings())
-      .catch((error) => {
-        console.error(`Đồng bộ Haravan ban đầu thất bại: ${error.message}`);
-        console.error('Chatbot tiếp tục dùng dữ liệu đang có và sẽ tự thử lại.');
-      })
-      .finally(() => {
-        haravan.startAutoSync(
-          (error) => {
-            console.error(`Đồng bộ Haravan định kỳ thất bại: ${error.message}`);
-          },
-          () => syncProductEmbeddings()
-        );
-      });
-  } else {
-    syncProductEmbeddings();
+async function startApplication() {
+  if (!haravan.isConfigured()) {
+    throw new Error('Thiếu HARAVAN_ACCESS_TOKEN. Chatbot chỉ sử dụng dữ liệu từ Haravan API.');
   }
+
+  await haravan.sync();
+  await syncProductEmbeddings();
+
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`Chatbot: http://localhost:${config.port}`);
+    console.log(`Admin:   http://localhost:${config.port}/admin.html`);
+    console.log('Dữ liệu: Haravan API');
+    console.log(`AI:      ${ai.isConfigured() ? 'Đã cấu hình 2 tầng (Router → Database code → Final)' : 'Chưa cấu hình - đang dùng tìm kiếm local dự phòng'}`);
+    console.log(`Vector:  ${embedding.isConfigured() ? `${config.embedding.model} (${embedding.entries.size} vector đã nạp)` : 'Chưa cấu hình VOYAGE_API_KEY'}`);
+  });
+
+  haravan.startAutoSync(
+    (error) => {
+      console.error(`Đồng bộ Haravan định kỳ thất bại: ${error.message}`);
+    },
+    () => syncProductEmbeddings()
+  );
+}
+
+startApplication().catch((error) => {
+  console.error(`[KHỞI ĐỘNG] ${error.message}`);
+  process.exitCode = 1;
 });
