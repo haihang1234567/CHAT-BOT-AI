@@ -249,3 +249,186 @@ test('giày bóng đá bắt buộc hỏi mặt sân trước khi hiện sản p
   assert.equal(route.consultation.pendingField, 'surface');
   assert.match(route.clarificationQuestion, /cỏ nhân tạo|cỏ tự nhiên|trong nhà/i);
 });
+
+test('câu trả lời mặt sân giữ lại màu và các tiêu chí từ lượt trước', () => {
+  const products = new ProductService('', 'https://shop.example', { loadCsv: false });
+  products.replaceProducts([
+    {
+      ...product('pink-tf', 'Giày Bóng Đá Mizuno Hồng TF Sân Cỏ Nhân Tạo', 'Giày Bóng Đá', 'Mizuno'),
+      variants: [{
+        id: 'pink-tf-v1', sku: 'pink-tf-sku', color: 'Hồng', size: '41',
+        quantity: 5, inStock: true, price: 1800000
+      }]
+    },
+    {
+      ...product('green-tf', 'Giày Bóng Đá Mizuno Xanh TF Sân Cỏ Nhân Tạo', 'Giày Bóng Đá', 'Mizuno'),
+      variants: [{
+        id: 'green-tf-v1', sku: 'green-tf-sku', color: 'Xanh', size: '41',
+        quantity: 5, inStock: true, price: 1700000
+      }]
+    },
+    {
+      ...product('pink-fg', 'Giày Bóng Đá Mizuno Hồng FG Sân Cỏ Tự Nhiên', 'Giày Bóng Đá', 'Mizuno'),
+      variants: [{
+        id: 'pink-fg-v1', sku: 'pink-fg-sku', color: 'Hồng', size: '41',
+        quantity: 5, inStock: true, price: 1900000
+      }]
+    }
+  ]);
+  const ai = new AiService({ productFinalEnabled: false, maxCandidates: 5 }, products);
+  const firstMessage = 'giày đá bóng màu hồng';
+  const firstRoute = ai.fallbackRoute(firstMessage);
+  const storedRouteWithoutColor = {
+    ...firstRoute,
+    search: { ...firstRoute.search, colors: [] }
+  };
+  const history = [
+    { role: 'user', text: firstMessage },
+    { role: 'assistant', text: firstRoute.clarificationQuestion, route: storedRouteWithoutColor }
+  ];
+
+  const finalRoute = ai.fallbackRoute('cỏ nhân tạo', history);
+  const results = products.queryByPlan(finalRoute, 'cỏ nhân tạo', 5);
+
+  assert.equal(firstRoute.consultation.pendingField, 'surface');
+  assert.deepEqual(firstRoute.search.colors, ['hong']);
+  assert.equal(finalRoute.consultation.ready, true);
+  assert.deepEqual(finalRoute.search.colors, ['hong']);
+  assert.ok(finalRoute.search.categories.some((category) => /bóng đá/i.test(category)));
+  assert.deepEqual(results.map((item) => item.id), ['pink-tf']);
+});
+
+test('AI router chỉ trả điều kiện mới vẫn phải cộng dồn bộ lọc hội thoại', async () => {
+  const products = new ProductService('', 'https://shop.example', { loadCsv: false });
+  products.replaceProducts([
+    {
+      ...product('pink-tf-ai', 'Giày Bóng Đá Mizuno Hồng TF Sân Cỏ Nhân Tạo', 'Giày Bóng Đá', 'Mizuno'),
+      variants: [{
+        id: 'pink-tf-ai-v1', sku: 'pink-tf-ai-sku', color: 'Hồng', size: '41',
+        quantity: 5, inStock: true, price: 1800000
+      }]
+    },
+    {
+      ...product('green-tf-ai', 'Giày Bóng Đá Mizuno Xanh TF Sân Cỏ Nhân Tạo', 'Giày Bóng Đá', 'Mizuno'),
+      variants: [{
+        id: 'green-tf-ai-v1', sku: 'green-tf-ai-sku', color: 'Xanh', size: '41',
+        quantity: 5, inStock: true, price: 1700000
+      }]
+    }
+  ]);
+  const ai = new AiService({
+    baseUrl: 'https://ai.example',
+    token: 'test-token',
+    routerModel: 'test-haiku',
+    chatModel: 'test-haiku',
+    productFinalEnabled: false,
+    routerAlways: true,
+    cacheTtlMs: 60000
+  }, products);
+  const firstMessage = 'giày đá bóng màu hồng';
+  const firstRoute = ai.fallbackRoute(firstMessage);
+  const history = [
+    { role: 'user', text: firstMessage },
+    { role: 'assistant', text: firstRoute.clarificationQuestion, route: firstRoute }
+  ];
+  ai.call = async () => JSON.stringify({
+    intent: 'search_product',
+    needDatabase: true,
+    needWeb: false,
+    showProducts: true,
+    responseMode: 'brief',
+    clarificationQuestion: '',
+    consultation: { ready: true, pendingField: '' },
+    search: {
+      query: 'cỏ nhân tạo',
+      codes: [], productIds: [], names: [], brands: [], categories: [], colors: [], sizes: [],
+      customerNeeds: ['Sân cỏ nhân tạo'],
+      requirements: [{
+        label: 'Mặt sân cỏ nhân tạo',
+        terms: ['tf', 'as', 'cỏ nhân tạo'],
+        scope: 'identity'
+      }],
+      preferences: [], excludeTerms: ['fg', 'sg'], excludeProductIds: [],
+      flexibleFields: [], minPrice: null, maxPrice: null, inStockOnly: false, limit: 5
+    }
+  });
+
+  const finalRoute = await ai.route('cỏ nhân tạo', history, { forceAi: true });
+  assert.ok(finalRoute.search, JSON.stringify(finalRoute));
+  const results = products.queryByPlan(finalRoute, 'cỏ nhân tạo', 5);
+
+  assert.deepEqual(finalRoute.search.colors, ['hong']);
+  assert.ok(finalRoute.search.categories.some((category) => /bóng đá/i.test(category)));
+  assert.deepEqual(results.map((item) => item.id), ['pink-tf-ai']);
+});
+
+test('AI router bỏ sót một thuộc tính vẫn phải khôi phục từ nguyên văn khách nhập', async () => {
+  const { ai } = createServices();
+  Object.assign(ai.config, {
+    baseUrl: 'https://ai.example',
+    token: 'test-token',
+    routerModel: 'test-haiku',
+    chatModel: 'test-haiku',
+    cacheTtlMs: 60000
+  });
+  ai.call = async () => JSON.stringify({
+    intent: 'search_product',
+    needDatabase: true,
+    needWeb: false,
+    showProducts: false,
+    responseMode: 'clarify',
+    clarificationQuestion: 'Bạn chơi trên mặt sân nào?',
+    consultation: { ready: false, pendingField: 'surface' },
+    search: {
+      query: 'giày bóng đá',
+      codes: [], productIds: [], names: [], brands: [],
+      categories: ['Giày Bóng Đá'], colors: [], sizes: [],
+      customerNeeds: ['Giày bóng đá'], requirements: [], preferences: [],
+      excludeTerms: [], excludeProductIds: [], flexibleFields: [],
+      minPrice: null, maxPrice: null, inStockOnly: false, limit: 5
+    }
+  });
+
+  const route = await ai.route('giày đá bóng màu hồng', [], { forceAi: true });
+
+  assert.deepEqual(route.search.colors, ['hong']);
+  assert.match(route.search.query, /mau hong/);
+  assert.equal(route.consultation.pendingField, 'surface');
+});
+
+test('khách bổ sung bộ lọc ở tin sau vẫn giữ nhu cầu đã chốt trước đó', () => {
+  const products = new ProductService('', 'https://shop.example', { loadCsv: false });
+  products.replaceProducts([
+    {
+      ...product('run-pink', 'Giày Chạy Bộ Mizuno Hồng', 'Giày Chạy Bộ', 'Mizuno', 1400000),
+      variants: [{
+        id: 'run-pink-v1', sku: 'run-pink-sku', color: 'Hồng', size: '41',
+        quantity: 5, inStock: true, price: 1400000
+      }]
+    },
+    {
+      ...product('run-green', 'Giày Chạy Bộ Mizuno Xanh', 'Giày Chạy Bộ', 'Mizuno', 1300000),
+      variants: [{
+        id: 'run-green-v1', sku: 'run-green-sku', color: 'Xanh', size: '41',
+        quantity: 5, inStock: true, price: 1300000
+      }]
+    }
+  ]);
+  const ai = new AiService({ productFinalEnabled: false, maxCandidates: 5 }, products);
+  const firstMessage = 'giày chạy bộ dưới 2 triệu';
+  const firstRoute = ai.fallbackRoute(firstMessage);
+  const history = [
+    { role: 'user', text: firstMessage },
+    { role: 'assistant', text: 'Mình đã lọc sản phẩm phù hợp.', route: firstRoute }
+  ];
+
+  const refinedRoute = ai.fallbackRoute('màu hồng', history);
+  const results = products.queryByPlan(refinedRoute, 'màu hồng', 5);
+
+  assert.equal(refinedRoute.consultation.mode, 'refine');
+  assert.equal(refinedRoute.showProducts, true);
+  assert.equal(refinedRoute.search.maxPrice, 2000000);
+  assert.deepEqual(refinedRoute.search.colors, ['hong']);
+  assert.ok(refinedRoute.search.categories.some((category) => /chạy bộ/i.test(category)));
+  assert.deepEqual(results.map((item) => item.id), ['run-pink']);
+});
