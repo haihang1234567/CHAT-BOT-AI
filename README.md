@@ -1,6 +1,6 @@
 # GHS Local Chatbot – AI code-first tiết kiệm token
 
-Chatbot tư vấn sản phẩm Green Holding Sport có thể đọc sản phẩm trực tiếp từ Haravan API hoặc dùng `data/products.csv` làm nguồn dự phòng. AI hoạt động theo kiến trúc:
+Chatbot tư vấn sản phẩm Green Holding Sport đọc sản phẩm, biến thể và tồn kho trực tiếp từ Haravan API. AI hoạt động theo kiến trúc:
 
 ```text
 Haiku phân tích nhu cầu thành JSON ngắn
@@ -65,7 +65,7 @@ router hội thoại; còn `knowledge/` chỉ chứa kiến thức thể thao đ
 
 ### Code truy vấn dữ liệu
 
-Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong dữ liệu đã đồng bộ bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh, nhóm sản phẩm và link đều lấy từ Haravan hoặc CSV dự phòng.
+Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong dữ liệu đã đồng bộ bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh, nhóm sản phẩm và link đều lấy từ Haravan.
 
 ### Tối ưu số lần gọi AI cho sản phẩm
 
@@ -105,7 +105,7 @@ Xem chi tiết tại `TWO_STAGE_AI.md`.
    - Khách: `http://localhost:3100`
    - Nhân viên: `http://localhost:3100/admin.html`
 
-Mật khẩu admin mặc định của bản test: `123456`.
+Phải đặt `ADMIN_PASSWORD` trong `.env` hoặc Environment của Render trước khi chạy.
 
 ### Gửi sản phẩm thủ công từ Admin
 
@@ -134,7 +134,7 @@ Dùng cùng một model cho cả hai lần gọi:
 
 ```env
 ANTHROPIC_BASE_URL=https://llm.wokushop.com
-ANTHROPIC_AUTH_TOKEN=TOKEN_CUA_BAN
+ANTHROPIC_AUTH_TOKEN=
 AI_MODEL=TEN_MODEL
 ```
 
@@ -199,7 +199,7 @@ Tạo API key miễn phí tại `https://app.tavily.com`, sau đó thêm vào `.
 
 ```env
 KNOWLEDGE_WEB_ENABLED=true
-TAVILY_API_KEY=KEY_CUA_BAN
+TAVILY_API_KEY=
 KNOWLEDGE_WEB_MAX_RESULTS=3
 KNOWLEDGE_WEB_CONTENT_CHARS=550
 KNOWLEDGE_WEB_CACHE_TTL_MS=86400000
@@ -218,27 +218,15 @@ Tạo Private App trong trang quản trị Haravan và cấp các quyền đọc
 Điền các biến sau trong `.env` khi chạy local hoặc phần Environment của Render:
 
 ```env
-PRODUCT_SOURCE=haravan
 HARAVAN_API_BASE_URL=https://apis.haravan.com/com
-HARAVAN_ACCESS_TOKEN=TOKEN_PRIVATE_APP
+HARAVAN_ACCESS_TOKEN=
 HARAVAN_SYNC_INTERVAL_MS=600000
 HARAVAN_USE_LOCATION_INVENTORY=true
-HARAVAN_FALLBACK_TO_CSV=true
 ```
 
-Hệ thống tải dữ liệu khi khởi động và tự đồng bộ lại mỗi 10 phút. Chatbot tìm trong bộ nhớ nên không gọi Haravan cho từng tin nhắn. Nếu đồng bộ lỗi, dữ liệu lần gần nhất vẫn được giữ nguyên.
+Hệ thống bắt buộc đồng bộ Haravan thành công trước khi mở cổng và tự đồng bộ lại mỗi 10 phút. Chatbot tìm trong bộ nhớ nên không gọi Haravan cho từng tin nhắn. Nếu một lần đồng bộ định kỳ bị lỗi, dữ liệu từ lần đồng bộ Haravan gần nhất vẫn được giữ nguyên.
 
 Không ghi `HARAVAN_ACCESS_TOKEN` vào GitHub hoặc file `.env.example`.
-
-## Dùng CSV dự phòng
-
-Nếu chưa dùng Haravan, đặt:
-
-```env
-PRODUCT_SOURCE=csv
-```
-
-Sau đó thay `data/products.csv` bằng CSV mới có cùng cấu trúc và khởi động lại máy chủ.
 
 ## Dữ liệu local
 

@@ -3,7 +3,7 @@
 ## 1.3.0 – AI hai tầng
 
 - Thêm AI Router gọi lần 1 để nhận dạng ý định và xuất bộ lọc JSON.
-- Backend tự kiểm tra JSON và truy vấn CSV/database bằng code; AI không viết SQL.
+- Backend tự kiểm tra JSON và truy vấn catalog Haravan đã đồng bộ bằng code; AI không viết SQL.
 - Thêm AI lần 2 để nhận dữ liệu đã lọc và tạo câu trả lời cuối.
 - Hỗ trợ dùng một model chung hoặc hai model riêng cho Router và Chat.
 - Thêm truy vấn có cấu trúc theo mã, tên, thương hiệu, loại, màu, size, khoảng giá và tồn kho.

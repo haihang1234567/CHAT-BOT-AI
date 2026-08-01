@@ -6,7 +6,7 @@
 Khách gửi câu hỏi
   → Code Router nhận dạng ý định và tạo bộ lọc
   → Chỉ khi code thiếu dữ kiện: AI Router bổ sung JSON bộ lọc
-  → Code Node.js truy vấn CSV/database
+  → Code Node.js truy vấn catalog đã đồng bộ từ Haravan API
   → Haiku nhận kết quả đã rút gọn và viết câu trả lời
   → Giao diện dựng ảnh, giá, màu, size và link từ database
 ```

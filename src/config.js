@@ -14,9 +14,6 @@ function booleanValue(value, fallback = false) {
 
 const sharedModel = String(process.env.AI_MODEL || '');
 const haravanToken = String(process.env.HARAVAN_ACCESS_TOKEN || '').trim();
-const productSource = String(process.env.PRODUCT_SOURCE || (haravanToken ? 'haravan' : 'csv'))
-  .trim()
-  .toLowerCase();
 const aiCostMode = String(process.env.AI_COST_MODE || 'balanced').trim().toLowerCase();
 const requestedVoyageDimension = Number(process.env.VOYAGE_OUTPUT_DIMENSION || 512);
 const voyageOutputDimension = [256, 512, 1024, 2048].includes(requestedVoyageDimension)
@@ -44,10 +41,9 @@ const defaultOfficialDomains = [
 module.exports = {
   port: Number(process.env.PORT || 3100),
   shopDomain: String(process.env.SHOP_DOMAIN || 'https://www.greenholdingsport.vn').replace(/\/$/, ''),
-  productCsvPath: resolveProjectPath(process.env.PRODUCT_CSV_PATH, './data/products.csv'),
   storePath: resolveProjectPath(process.env.STORE_PATH, './data/local-store.json'),
   adminPassword: String(process.env.ADMIN_PASSWORD || ''),
-  productSource: ['haravan', 'csv'].includes(productSource) ? productSource : 'csv',
+  productSource: 'haravan',
   haravan: {
     baseUrl: String(process.env.HARAVAN_API_BASE_URL || 'https://apis.haravan.com/com').replace(/\/$/, ''),
     token: haravanToken,
@@ -59,8 +55,7 @@ module.exports = {
     locationIds: String(process.env.HARAVAN_LOCATION_IDS || '')
       .split(',')
       .map((value) => value.trim())
-      .filter(Boolean),
-    fallbackToCsv: booleanValue(process.env.HARAVAN_FALLBACK_TO_CSV, true)
+      .filter(Boolean)
   },
   embedding: {
     enabled: booleanValue(process.env.VOYAGE_EMBEDDING_ENABLED, true),
