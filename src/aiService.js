@@ -821,7 +821,23 @@ class AiService {
     const currentRules = this.codeSearchRules(message);
     const explicitNewSubject = Boolean(currentRules.categories.length || currentRules.productKind);
     const pending = previous?.consultation?.pendingField;
-    const continuation = Boolean(pending && (pending === 'sport' || !explicitNewSubject));
+    const hasFollowUpFilters = Boolean(
+      currentRules.brands.length
+      || currentRules.colors.length
+      || currentRules.sizes.length
+      || currentRules.requirements.length
+      || currentRules.preferences.length
+      || currentRules.excludeTerms.length
+      || currentRules.minPrice !== null
+      || currentRules.maxPrice !== null
+      || currentRules.inStockOnly
+      || currentRules.flexibleFields.length
+    );
+    const refining = Boolean(!pending && !explicitNewSubject && hasFollowUpFilters);
+    const continuation = Boolean(
+      (pending && (pending === 'sport' || !explicitNewSubject))
+      || refining
+    );
     if (!more && !continuation) return route;
 
     const mergedSearch = this.mergeSearchState(previous.search, route.search, message);
@@ -841,12 +857,14 @@ class AiService {
       needDatabase: true,
       needWeb: false,
       needFinalAi: false,
-      showProducts: more ? true : route.showProducts,
-      responseMode: more ? 'brief' : route.responseMode,
-      clarificationQuestion: more ? '' : route.clarificationQuestion,
+      showProducts: more || refining ? true : route.showProducts,
+      responseMode: more || refining ? 'brief' : route.responseMode,
+      clarificationQuestion: more || refining ? '' : route.clarificationQuestion,
       search: mergedSearch,
       consultation: more
         ? { ready: true, mode: 'more', pendingField: '' }
+        : refining
+          ? { ready: true, mode: 'refine', pendingField: '' }
         : {
             ...(previous.consultation || {}),
             ...(route.consultation || {}),
@@ -1110,7 +1128,15 @@ class AiService {
 
   finalizeProductRoute(route, message, history = []) {
     const contextual = this.applyConversationContext(route, message, history);
-    const contextualQuery = contextual?.search?.query || message;
+    const routeQuery = contextual?.search?.query || '';
+    const normalizedRouteQuery = canonicalSearchText(routeQuery);
+    const normalizedMessage = canonicalSearchText(message);
+    const contextualQuery = cleanString(
+      normalizedMessage && normalizedRouteQuery.includes(normalizedMessage)
+        ? routeQuery
+        : [routeQuery, message].filter(Boolean).join(' '),
+      1500
+    );
     const merged = this.mergeCodeRules(contextual, contextualQuery);
     const grounded = this.applyCatalogCategoryGrounding(merged, message, history);
     const resolution = this.catalogResolution(contextualQuery);
