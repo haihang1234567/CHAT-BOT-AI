@@ -1,84 +1,92 @@
-# Kiến trúc code-first và AI hai tầng dự phòng
+# Kiến trúc AI điều phối + SQL catalog
 
 ## Luồng chính
 
 ```text
 Khách gửi câu hỏi
-  → Code Router nhận dạng ý định và tạo bộ lọc
-  → Chỉ khi code thiếu dữ kiện: AI Router bổ sung JSON bộ lọc
-  → Code Node.js truy vấn catalog đã đồng bộ từ Haravan API
-  → Haiku nhận kết quả đã rút gọn và viết câu trả lời
-  → Giao diện dựng ảnh, giá, màu, size và link từ database
+  → Haiku đọc câu hỏi, lịch sử, trạng thái nhu cầu và Catalog Profile liên quan
+  → Haiku chọn ASK | SEARCH | ANSWER | HANDOFF
+  → ASK: hỏi thêm đúng một thông tin có ảnh hưởng đến lựa chọn
+  → SEARCH: backend xác thực SearchPlan và tạo câu SQL tham số hóa
+  → SQLite lọc catalog cache được dựng lại từ Haravan
+  → Evidence Gate kiểm tra lại mọi điều kiện cứng trên dữ liệu sản phẩm/biến thể
+  → Code dựng ảnh, giá, màu, size, tồn kho và phân trang
+  → Chỉ gọi Final AI khi cần tư vấn có lý do hoặc so sánh sâu
 ```
 
-Phần lớn câu hỏi chỉ gọi Haiku một lần. AI không được tự viết SQL và không được tự truy cập database. Nếu cần AI Router, nó chỉ trả một kế hoạch truy vấn có cấu trúc và backend vẫn tự kiểm tra bộ lọc.
+Haravan vẫn là nguồn dữ liệu duy nhất. SQLite không thay Haravan và không được
+nhập dữ liệu thủ công; bảng được dựng lại sau mỗi lần `replaceProducts()` chạy.
+Mặc định database nằm trong RAM (`CATALOG_DB_PATH=:memory:`), phù hợp với Render
+vì catalog luôn được nạp lại từ Haravan khi tiến trình khởi động.
 
-## JSON AI lần 1
+## Quyết định của Router AI
+
+Router trả JSON có trường `action`:
+
+- `ASK`: chưa đủ dữ kiện và thông tin còn thiếu có thể làm chọn sai loại/công năng.
+- `SEARCH`: đã đủ để lọc; `search` là SearchPlan, không phải SQL.
+- `ANSWER`: chào hỏi/cảm ơn hoặc câu kiến thức cần đi qua nguồn chính thống.
+- `HANDOFF`: chuyển cuộc trò chuyện sang nhân viên.
+
+Ví dụ SearchPlan:
 
 ```json
 {
+  "action": "SEARCH",
   "intent": "product_recommendation",
-  "needDatabase": true,
-  "needFinalAi": true,
-  "needsAdmin": false,
-  "responseMode": "recommend",
-  "clarificationQuestion": "",
+  "showProducts": true,
+  "consultation": { "ready": true, "pendingField": "", "missingFields": [] },
   "search": {
-    "query": "giày bóng chuyền Mizuno màu trắng khoảng 2 triệu size 42",
-    "codes": [],
-    "productIds": [],
-    "names": [],
+    "query": "giày bóng đá Mizuno màu trắng sân cỏ nhân tạo dưới 2 triệu",
     "brands": ["Mizuno"],
-    "categories": ["giày bóng chuyền"],
+    "categories": ["Giày Bóng Đá"],
     "colors": ["trắng"],
-    "sizes": ["42"],
-    "minPrice": 1500000,
-    "maxPrice": 2500000,
+    "maxPrice": 2000000,
+    "requirements": [
+      { "label": "Sân cỏ nhân tạo", "terms": ["TF", "AS", "cỏ nhân tạo"], "scope": "identity" }
+    ],
+    "preferences": [],
+    "excludeTerms": ["FG", "SG"],
     "inStockOnly": true,
-    "limit": 5
+    "limit": 3
   }
 }
 ```
 
-## Haiku trả lời nhận gì?
+`requirements`, category, brand, màu, size, giá và tồn kho là điều kiện cứng.
+`preferences` chỉ tăng thứ hạng. Voyage tìm ứng viên cho nhu cầu mềm như “êm
+chân” hoặc “bám đường”; ứng viên Voyage vẫn phải qua SQL và Evidence Gate.
 
-Ở chế độ `balanced`, Haiku chỉ nhận:
+## Catalog Profile
 
-- Câu hỏi khách.
-- Kế hoạch đã chuẩn hóa từ code hoặc AI Router.
-- Tối đa 3 sản phẩm do code tìm được.
-- Tối đa 4 biến thể khi câu hỏi thật sự hỏi màu, size, SKU, giá hoặc tồn kho.
-- Tối đa 260 ký tự mô tả và 2 tin nhắn gần nhất.
+Không gửi toàn bộ hàng nghìn sản phẩm vào prompt. Mỗi lượt Router nhận:
 
-Ảnh, link và toàn bộ biến thể không cần AI diễn đạt; frontend lấy trực tiếp từ Haravan theo `productId`.
+- Catalog Summary: loại hàng, thương hiệu, số lượng và khoảng giá thật.
+- Catalog Context liên quan: type, brand, màu, size, khoảng giá và tối đa 8 mẫu
+  đại diện lấy trực tiếp từ Haravan.
+- Trạng thái hội thoại đã xác nhận: category, nhu cầu, điều kiện cứng, ưu tiên,
+  trường đang hỏi và trường khách cho phép linh hoạt.
 
-## Câu hỏi kiến thức
+Voyage tạo embedding cho toàn bộ catalog sau đồng bộ, nhưng chỉ query khi tìm
+từ khóa không đủ hoặc khách cần tư vấn theo mô tả ngữ nghĩa.
 
-- Chỉ trả lời text ngắn, không hiện thẻ sản phẩm.
-- AI trả kèm tối đa 3 gợi ý hỏi tiếp trong cùng request.
-- Khách bấm **Xem giải thích chi tiết** mới tạo phần trả lời dài.
-- Khách bấm gợi ý sản phẩm thì code mới truy vấn kho và dựng ảnh/biến thể.
+## Không tự nới điều kiện
 
-## Xử lý lỗi
+Nếu SQL trả 0 kết quả, chatbot không đổi màu, hãng, size, ngân sách hoặc công
+năng. Chatbot nói rõ chưa có và đưa nút xin phép nới từng điều kiện. Chỉ khi
+khách đồng ý, Router mới đặt `search.relaxConstraints`, sau đó backend mới bỏ
+đúng trường được phép và tìm lại.
 
-- Chưa có token/model: hệ thống tự dùng bộ tìm kiếm local dự phòng.
-- AI Router lỗi hoặc JSON sai: hệ thống dùng Code Router.
-- Haiku trả lời lỗi: hệ thống vẫn trả sản phẩm tìm được bằng code local.
-- Khách gõ `admin`: chuyển thẳng cho nhân viên, không gọi AI.
+## Chi phí AI
 
-## Cấu hình model
+- Chào hỏi, mã chính xác, phân trang “Xem thêm”: 0 call hoặc dùng cache.
+- Tìm sản phẩm thông thường: 1 Router call; code/SQL dựng câu trả lời và thẻ.
+- Tư vấn có lý do/so sánh: 1 Router + 1 Final call rút gọn.
+- Kiến thức: kho nội bộ trước; thiếu mới tìm nguồn chính thống rồi gọi Final.
+- Ảnh, toàn bộ biến thể và phân trang không đưa vào prompt AI.
 
-Dùng một model chung:
+## Chẩn đoán dữ liệu
 
-```env
-AI_MODEL=ten-model
-```
-
-Hoặc tách hai model:
-
-```env
-AI_ROUTER_MODEL=model-nhe-nhanh
-AI_CHAT_MODEL=model-tu-van-tot
-```
-
-Thông thường có thể dùng Haiku cho cả hai biến. AI Router chỉ phát sinh ở các câu code không hiểu đủ.
+Admin có endpoint `GET /api/admin/catalog-quality` để xem sản phẩm thiếu type,
+SKU, ảnh, màu hoặc size. `GET /api/admin/catalog-status` hiển thị trạng thái
+Haravan, SQLite và Voyage.

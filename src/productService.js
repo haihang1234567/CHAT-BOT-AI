@@ -1,5 +1,6 @@
 const { SLANG_EXPANSION_TOKENS } = require('./chatSlangNormalizer');
 const { cosineSimilarity } = require('./embeddingService');
+const { CatalogDatabase } = require('./catalogDatabase');
 
 function clean(value) {
   if (value === null || value === undefined) return '';
@@ -153,6 +154,7 @@ class ProductService {
     this.source = 'empty';
     this.lastLoadedAt = null;
     this.embeddingService = options.embeddingService || null;
+    this.catalogDatabase = options.catalogDatabase || new CatalogDatabase(options.catalogDbPath || ':memory:');
     this._catalogSummary = this.buildCatalogSummary();
   }
 
@@ -209,6 +211,9 @@ class ProductService {
       }
     }
 
+    // SQL là catalog cache truy vấn. Chỉ thay dữ liệu đang phục vụ sau khi cache mới dựng thành công.
+    this.catalogDatabase.rebuild(finalized);
+
     // Chỉ thay toàn bộ chỉ mục sau khi dữ liệu mới đã được dựng xong.
     this.products = finalized;
     this.productById = nextProductById;
@@ -243,6 +248,7 @@ class ProductService {
       productCount: this.products.length,
       variantCount: this.products.reduce((sum, product) => sum + product.variants.length, 0),
       lastLoadedAt: this.lastLoadedAt,
+      database: this.catalogDatabase.status(),
       embeddings: this.embeddingStatus()
     };
   }
@@ -337,6 +343,106 @@ class ProductService {
 
   getCatalogSummary() {
     return this._catalogSummary;
+  }
+
+  getCatalogProfile(input = '') {
+    const search = input?.search && typeof input.search === 'object' ? input.search : {};
+    const query = canonicalSearchText(typeof input === 'string' ? input : search.query || '');
+    const requestedTypes = unique([
+      ...(search.categories || []),
+      ...this.matchCatalogTypes(query)
+    ].map(canonicalSearchText));
+    const requestedBrands = unique((search.brands || []).map(canonicalSearchText));
+    let relevant = this.products.filter((product) => product.inStock);
+    if (requestedTypes.length) {
+      relevant = relevant.filter((product) => requestedTypes.some((type) => (
+        product.identityText.includes(type) || canonicalSearchText(product.type).includes(type)
+      )));
+    }
+    if (requestedBrands.length) {
+      relevant = relevant.filter((product) => requestedBrands.includes(canonicalSearchText(product.brand)));
+    }
+    if (!relevant.length) relevant = this.products.filter((product) => product.inStock);
+
+    const counts = (values, limit) => [...values.reduce((map, value) => {
+      const label = clean(value);
+      const key = canonicalSearchText(label);
+      if (!key) return map;
+      const current = map.get(key) || { name: label, count: 0 };
+      current.count += 1;
+      map.set(key, current);
+      return map;
+    }, new Map()).values()]
+      .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'vi'))
+      .slice(0, limit);
+    const variants = relevant.flatMap((product) => product.variants.filter((variant) => variant.inStock));
+    const prices = variants.map((variant) => Number(variant.price || 0)).filter((price) => price > 0);
+    const profile = {
+      productCount: relevant.length,
+      types: counts(relevant.map((product) => product.type), 20),
+      brands: counts(relevant.map((product) => product.brand), 12),
+      colors: counts(variants.map((variant) => variant.color), 16),
+      sizes: counts(variants.map((variant) => variant.size), 20),
+      priceMin: prices.length ? Math.min(...prices) : 0,
+      priceMax: prices.length ? Math.max(...prices) : 0
+    };
+    profile.samples = relevant.slice(0, 8).map((product) => ({
+      id: product.id,
+      name: product.name,
+      type: product.type,
+      brand: product.brand,
+      tags: clean(product.tags).slice(0, 140),
+      excerpt: clean(product.excerpt || product.description).slice(0, 180),
+      colors: unique(product.variants.filter((variant) => variant.inStock).map((variant) => variant.color)).slice(0, 6),
+      sizes: unique(product.variants.filter((variant) => variant.inStock).map((variant) => variant.size)).slice(0, 8)
+    }));
+    profile.text = [
+      `CATALOG_CONTEXT (${profile.productCount} sản phẩm còn hàng liên quan):`,
+      `Loại: ${profile.types.map((item) => `${item.name} (${item.count})`).join(', ') || 'chưa xác định'}`,
+      `Hãng: ${profile.brands.map((item) => `${item.name} (${item.count})`).join(', ') || 'chưa xác định'}`,
+      `Màu có dữ liệu: ${profile.colors.map((item) => item.name).join(', ') || 'chưa khai báo'}`,
+      `Size có dữ liệu: ${profile.sizes.map((item) => item.name).join(', ') || 'chưa khai báo'}`,
+      `Giá: ${formatVnd(profile.priceMin)}–${formatVnd(profile.priceMax)}`,
+      `Mẫu đại diện từ dữ liệu thật: ${profile.samples.map((item) => (
+        `${item.name} | ${item.tags || item.excerpt || item.type}`
+      )).join(' || ') || 'chưa có'}`
+    ].join('\n');
+    return profile;
+  }
+
+  catalogQualityReport() {
+    const missing = (predicate) => this.products.filter(predicate).map((product) => ({
+      id: product.id,
+      name: product.name,
+      type: product.type,
+      brand: product.brand
+    }));
+    const missingColor = missing((product) => product.variants.length > 1
+      && product.variants.every((variant) => !clean(variant.color)));
+    const missingSize = missing((product) => product.variants.length > 1
+      && product.variants.every((variant) => !clean(variant.size)));
+    const missingSku = missing((product) => product.variants.some((variant) => !clean(variant.sku)));
+    const missingImage = missing((product) => !(product.images || []).length
+      && product.variants.every((variant) => !clean(variant.image)));
+    const missingType = missing((product) => !clean(product.type));
+    return {
+      generatedAt: new Date().toISOString(),
+      productCount: this.products.length,
+      issues: {
+        missingColor,
+        missingSize,
+        missingSku,
+        missingImage,
+        missingType
+      },
+      counts: {
+        missingColor: missingColor.length,
+        missingSize: missingSize.length,
+        missingSku: missingSku.length,
+        missingImage: missingImage.length,
+        missingType: missingType.length
+      }
+    };
   }
 
   catalogTypes(kind = '') {
@@ -757,7 +863,7 @@ class ProductService {
     })[0] || null;
   }
 
-  queryByPlan(plan = {}, fallbackQuery = '', limit = 5, options = {}) {
+  queryByPlanInMemory(plan = {}, fallbackQuery = '', limit = 5, options = {}) {
     const search = plan?.search && typeof plan.search === 'object' ? plan.search : plan;
     const filters = {
       query: clean(search.query || fallbackQuery),
@@ -895,6 +1001,50 @@ class ProductService {
     if (!results.length && !hasHardFilters && textQuery) results = this.search(textQuery, safeLimit);
     if (!results.length && !hasHardFilters && fallbackQuery) results = this.search(fallbackQuery, safeLimit);
     return results;
+  }
+
+  queryByPlan(plan = {}, fallbackQuery = '', limit = 5, options = {}) {
+    const search = plan?.search && typeof plan.search === 'object' ? plan.search : plan;
+    const safeLimit = Math.max(1, Math.min(50, Number(search.limit || limit || 5)));
+    let sqlRows;
+    try {
+      sqlRows = this.catalogDatabase.query({ ...search, query: search.query || fallbackQuery }, {
+        limit: Math.max(safeLimit * 3, 12)
+      });
+    } catch (error) {
+      console.warn(`[CATALOG_SQL] Truy vấn lỗi, dùng chỉ mục bộ nhớ an toàn: ${error.message}`);
+      return this.queryByPlanInMemory(plan, fallbackQuery, safeLimit, options);
+    }
+
+    const verified = [];
+    for (const row of sqlRows) {
+      const validationPlan = {
+        ...plan,
+        search: {
+          ...search,
+          codes: [],
+          productIds: [row.productId],
+          limit: 1
+        }
+      };
+      const [match] = this.queryByPlanInMemory(validationPlan, fallbackQuery, 1, {
+        strictFilters: true
+      });
+      if (match?.id === row.productId) verified.push({ ...match, sqlScore: row.score });
+      if (verified.length >= safeLimit) break;
+    }
+
+    if (!verified.length && !options.strictFilters) {
+      const hasHardConstraints = Boolean(
+        (search.codes || []).length || (search.productIds || []).length || (search.categories || []).length
+        || (search.brands || []).length || (search.colors || []).length || (search.sizes || []).length
+        || (search.requirements || []).length || (search.excludeTerms || []).length
+        || search.minPrice !== null && search.minPrice !== undefined
+        || search.maxPrice !== null && search.maxPrice !== undefined
+      );
+      if (!hasHardConstraints) return this.queryByPlanInMemory(plan, fallbackQuery, safeLimit, options);
+    }
+    return verified;
   }
 
   compactForAi(products, rawQuery = '', options = {}) {

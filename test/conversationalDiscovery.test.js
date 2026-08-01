@@ -467,7 +467,8 @@ test('không có đúng màu sau câu trả lời mặt sân thì báo hết và
   assert.deepEqual(route.search.colors, ['hong']);
   assert.deepEqual(results, []);
   assert.deepEqual(answer.productIds, []);
-  assert.deepEqual(answer.suggestions, []);
+  assert.deepEqual(answer.suggestions.map((item) => item.label), ['Bỏ lọc màu']);
+  assert.match(answer.suggestions[0].prompt, /đồng ý bỏ yêu cầu màu/i);
   assert.match(answer.reply, /chưa có.*màu hồng/i);
-  assert.match(answer.reply, /không hiển thị sản phẩm khác màu/i);
+  assert.match(answer.reply, /không tự đổi điều kiện/i);
 });

@@ -23,7 +23,9 @@ const INTENTS = new Set([
   'general_question',
   'unknown'
 ]);
+const ROUTER_ACTIONS = new Set(['ASK', 'SEARCH', 'ANSWER', 'HANDOFF']);
 const FLEXIBLE_FIELDS = new Set(['budget', 'brand', 'color', 'size']);
+const RELAXABLE_CONSTRAINTS = new Set(['brand', 'color', 'size', 'budget', 'requirements', 'preferences']);
 
 function cleanString(value, maxLength = 250) {
   return String(value ?? '').trim().slice(0, maxLength);
@@ -44,6 +46,10 @@ function cleanFlexibleFields(value) {
   return cleanList(value, 4, 20).filter((field) => FLEXIBLE_FIELDS.has(field));
 }
 
+function cleanRelaxConstraints(value) {
+  return cleanList(value, 6, 20).filter((field) => RELAXABLE_CONSTRAINTS.has(field));
+}
+
 function cleanNeedGroups(value, maxItems = 8, maxTerms = 8) {
   if (!Array.isArray(value)) return [];
   return value
@@ -58,6 +64,16 @@ function cleanNeedGroups(value, maxItems = 8, maxTerms = 8) {
 
 function uniqueStrings(values) {
   return [...new Set((values || []).map((value) => cleanString(value, 160)).filter(Boolean))];
+}
+
+function uniqueNormalizedStrings(values) {
+  const seen = new Set();
+  return (values || []).map((value) => cleanString(value, 160)).filter((value) => {
+    const key = normalizeText(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function uniqueNeedGroups(groups) {
@@ -246,7 +262,9 @@ class AiService {
             : [],
         consultation: item?.route?.consultation
           ? {
+              action: cleanString(item.route.action, 20),
               pendingField: cleanString(item.route.consultation.pendingField, 40),
+              missingFields: cleanList(item.route.consultation.missingFields, 6, 40),
               ready: Boolean(item.route.consultation.ready)
             }
           : null
@@ -259,7 +277,9 @@ class AiService {
 
     const search = previous.search;
     return {
+      action: cleanString(previous.action, 20),
       pendingField: cleanString(previous?.consultation?.pendingField, 40),
+      missingFields: cleanList(previous?.consultation?.missingFields, 6, 40),
       query: cleanString(search.query, 300),
       brands: cleanList(search.brands, 5, 80),
       categories: cleanList(search.categories, 5, 100),
@@ -270,7 +290,8 @@ class AiService {
       preferences: cleanNeedGroups(search.preferences, 5, 5),
       minPrice: cleanPrice(search.minPrice),
       maxPrice: cleanPrice(search.maxPrice),
-      flexibleFields: cleanFlexibleFields(search.flexibleFields)
+      flexibleFields: cleanFlexibleFields(search.flexibleFields),
+      relaxConstraints: cleanRelaxConstraints(search.relaxConstraints)
     };
   }
 
@@ -306,22 +327,27 @@ class AiService {
     };
   }
 
-  catalogGroundingPrompt() {
+  catalogGroundingPrompt(catalogProfile = null) {
     return [
       'CATALOG_SUMMARY:',
       this.catalogSummary().text,
+      catalogProfile?.text || '',
       'QUY TẮC CỨNG VỀ CATALOG: Đây là toàn bộ loại sản phẩm và thương hiệu có thật, còn hàng trong shop.',
       'Không được nhắc tới, gợi ý, hay đưa ra nhận định (kể cả nhận định “X không dùng Y”) về loại sản phẩm hoặc thương hiệu không xuất hiện trong CATALOG_SUMMARY.',
       'Nếu khách hỏi loại không có trong CATALOG_SUMMARY, chỉ được nói shop hiện chưa có loại đó; không được bịa lý do chuyên môn.'
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
-  buildRouterSystemPrompt() {
+  buildRouterSystemPrompt(catalogProfile = null) {
     return [
-      this.catalogGroundingPrompt(),
+      this.catalogGroundingPrompt(catalogProfile),
       'Bạn phân tích ý định cho chatbot thể thao Green Holding Sport và chỉ trả JSON.',
       'Bạn là bộ não điều khiển hội thoại: đọc MESSAGE, NORMALIZED_MESSAGE, HISTORY và CONVERSATION_STATE rồi tự quyết định hiểu gì, hỏi gì hoặc khi nào truy vấn sản phẩm.',
-      'Code chỉ xác thực JSON và truy vấn kho sau quyết định của bạn; không dựa vào câu hỏi mặc định của code để thay bạn hiểu khách.',
+      'Bạn phải chọn đúng một action: ASK, SEARCH, ANSWER hoặc HANDOFF.',
+      'ASK: chưa đủ dữ kiện để lọc đúng; hỏi đúng một câu tự nhiên và ghi các trường còn thiếu vào consultation.missingFields.',
+      'SEARCH: dữ kiện đã đủ; tạo SearchPlan trong search. Backend mới được phép truy vấn SQL khi nhận action này.',
+      'ANSWER: không cần truy vấn sản phẩm (chào hỏi, cảm ơn hoặc câu kiến thức sẽ đi qua nguồn chính thống). HANDOFF: chuyển nhân viên.',
+      'Code chỉ xác thực SearchPlan, chạy SQL tham số hóa và kiểm chứng kết quả sau quyết định của bạn; code không đặt câu hỏi tư vấn thay bạn.',
       'Tách rõ hai nhánh: tìm/tư vấn sản phẩm và hỏi kiến thức.',
       'Với sản phẩm, suy luận đầy đủ khách cần gì: bộ môn, loại hàng, mục đích, môi trường/mặt sân, đặc điểm người dùng, hãng, size, màu, ngân sách và tồn kho.',
       'requirements là điều kiện bắt buộc; preferences là ưu tiên. Không tự hạ điều kiện bắt buộc để lấy sản phẩm gần đúng.',
@@ -329,11 +355,13 @@ class AiService {
       'Dùng scope=identity cho bộ môn, loại hàng, dòng sản phẩm hoặc mã kỹ thuật; scope=details cho tính năng và nhu cầu sử dụng.',
       'Với câu hỏi kiến thức, đặt intent=general_question, needWeb=true, showProducts=false và viết webQuery ngắn gọn để tìm nguồn chính thống.',
       'Không tự trả lời kiến thức trong bước này. Backend sẽ tìm nguồn rồi mới gọi AI tổng hợp.',
-      'Nếu câu hỏi thiếu thông tin có thể làm chọn sai sản phẩm, responseMode=clarify và hỏi đúng một câu.',
+      'Đánh giá độ đủ dựa trên CATALOG_CONTEXT: chỉ ASK khi thông tin thiếu có thể làm thay đổi loại/công năng sản phẩm hoặc làm kết quả quá mơ hồ.',
+      'Nếu khách đã cho loại sản phẩm cùng bộ môn hoặc một tiêu chí lọc rõ (ví dụ giày chạy bộ dưới 1,5 triệu), phải SEARCH và trả danh sách; không ép hỏi thêm hãng/size.',
+      'Nếu công năng phụ thuộc môi trường sử dụng nhưng khách chưa nêu (mặt sân, trong/ngoài nhà, địa hình...), hãy ASK một câu có ích trước khi SEARCH.',
+      'Nếu câu hỏi thiếu thông tin có thể làm chọn sai sản phẩm, action=ASK, responseMode=clarify và hỏi đúng một câu.',
       'consultation.ready=true chỉ khi đã đủ dữ kiện thiết yếu; nếu chưa đủ, đặt pendingField và clarificationQuestion tự nhiên, đúng loại sản phẩm.',
       'Khi hỏi lại về loại hoặc bộ môn, chỉ liệt kê lựa chọn có thật trong CATALOG_SUMMARY.',
-      'Không bắt buộc hỏi mọi thông tin. Nếu khách đã nêu loại sản phẩm, bộ môn và ít nhất một tiêu chí lọc như ngân sách, hãng, size hoặc mục đích thì có thể showProducts=true.',
-      'Riêng giày bóng đá phải biết mặt sân trước khi showProducts=true.',
+      'Không bắt buộc hỏi mọi thông tin. Với action=SEARCH đặt needDatabase=true; showProducts=true nếu khách muốn xem/tìm/mua sản phẩm.',
       'Hiểu lỗi gõ đảo ký tự và từ viết tắt theo ngữ cảnh hội thoại, kể cả khi NORMALIZED_MESSAGE chưa sửa được; không tự sửa mã sản phẩm, SKU, Barcode hoặc size.',
       'Nếu CONVERSATION_STATE.pendingField có giá trị, MESSAGE là câu trả lời cho câu hỏi đang chờ. Phải hiểu MESSAGE theo câu hỏi gần nhất trong HISTORY, kể cả khi khách chỉ trả lời rất ngắn.',
       'Ví dụ pendingField=budget thì “2tr”, “2 triệu”, “tầm hai triệu” đều là thông tin ngân sách; đổi thành VND nguyên và không hỏi lại ngân sách.',
@@ -341,11 +369,13 @@ class AiService {
       'Giữ lại các nhu cầu đã có trong CONVERSATION_STATE, bổ sung dữ kiện mới rồi quyết định đã đủ để tìm sản phẩm hay chưa.',
       'Không lặp lại clarificationQuestion cũ khi MESSAGE đã cung cấp được pendingField. Nếu thật sự chưa hiểu, hãy hỏi lại tự nhiên và nêu ví dụ phù hợp.',
       'Khi không có pendingField, chỉ dùng HISTORY nếu khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý” hoặc đang tiếp tục nhu cầu trước đó.',
-      'Giá đổi thành VND nguyên. Không viết SQL, không bịa dữ liệu và không thêm trường ngoài schema.',
+      'SearchPlan chỉ chứa dữ kiện khách đã nói hoặc suy ra chắc chắn từ ngữ cảnh. Không tự thêm màu, hãng, size, ngân sách hay công năng.',
+      'Không tự nới điều kiện khi không có kết quả. Chỉ điền search.relaxConstraints sau khi khách nói rõ đồng ý bỏ/nới trường tương ứng.',
+      'Giá đổi thành VND nguyên. Không viết SQL; backend tự tạo SQL tham số hóa. Không bịa dữ liệu và không thêm trường ngoài schema.',
       'BỘ KIẾN THỨC VÀ VÍ DỤ ĐÃ DUYỆT:',
       buildRouterTrainingPrompt(this.catalogSummary()),
       'JSON_SCHEMA:',
-      '{"intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","consultation":{"ready":true,"pendingField":""},"search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"flexibleFields":["budget"],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
+      '{"action":"ASK|SEARCH|ANSWER|HANDOFF","intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","consultation":{"ready":true,"pendingField":"","missingFields":[]},"search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"flexibleFields":["budget"],"relaxConstraints":["color"],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
     ].join('\n');
   }
 
@@ -357,7 +387,7 @@ class AiService {
       'Không giải thích, không markdown, không giới thiệu bản thân, không nhắc Claude Code.',
       '',
       'QUY TẮC MODULE ROUTER:',
-      this.buildRouterSystemPrompt(),
+      this.buildRouterSystemPrompt(payload.catalogProfile),
       '',
       'INPUT_JSON:',
       JSON.stringify(payload),
@@ -779,36 +809,48 @@ class AiService {
 
   mergeSearchState(base = {}, current = {}, message = '') {
     const groups = (left, right) => [...(left || []), ...(right || [])];
-    return {
+    const relax = new Set(cleanRelaxConstraints(current.relaxConstraints));
+    const preserved = {
       ...base,
+      brands: relax.has('brand') ? [] : base.brands,
+      colors: relax.has('color') ? [] : base.colors,
+      sizes: relax.has('size') ? [] : base.sizes,
+      requirements: relax.has('requirements') ? [] : base.requirements,
+      preferences: relax.has('preferences') ? [] : base.preferences,
+      minPrice: relax.has('budget') ? null : base.minPrice,
+      maxPrice: relax.has('budget') ? null : base.maxPrice
+    };
+    return {
+      ...preserved,
       ...current,
-      query: cleanString([base.query, message].filter(Boolean).join(' '), 500),
+      query: cleanString([preserved.query, message].filter(Boolean).join(' '), 500),
       codes: uniqueStrings(current.codes || []),
       productIds: uniqueStrings(current.productIds || []),
       excludeProductIds: uniqueStrings([
         ...(base.excludeProductIds || []),
         ...(current.excludeProductIds || [])
       ]),
-      names: uniqueStrings(groups(base.names, current.names)),
-      brands: uniqueStrings(groups(base.brands, current.brands)),
-      categories: uniqueStrings(groups(base.categories, current.categories)),
-      colors: uniqueStrings(groups(base.colors, current.colors)),
-      sizes: uniqueStrings(groups(base.sizes, current.sizes)),
-      customerNeeds: uniqueStrings(groups(base.customerNeeds, current.customerNeeds)),
-      requirements: uniqueNeedGroups(groups(base.requirements, current.requirements)),
-      preferences: uniqueNeedGroups(groups(base.preferences, current.preferences)),
-      excludeTerms: uniqueStrings(groups(base.excludeTerms, current.excludeTerms)),
+      names: uniqueStrings(groups(preserved.names, current.names)),
+      brands: uniqueStrings(groups(preserved.brands, relax.has('brand') ? [] : current.brands)),
+      categories: uniqueStrings(groups(preserved.categories, current.categories)),
+      colors: uniqueNormalizedStrings(groups(preserved.colors, relax.has('color') ? [] : current.colors)),
+      sizes: uniqueNormalizedStrings(groups(preserved.sizes, relax.has('size') ? [] : current.sizes)),
+      customerNeeds: uniqueStrings(groups(preserved.customerNeeds, current.customerNeeds)),
+      requirements: uniqueNeedGroups(groups(preserved.requirements, relax.has('requirements') ? [] : current.requirements)),
+      preferences: uniqueNeedGroups(groups(preserved.preferences, relax.has('preferences') ? [] : current.preferences)),
+      excludeTerms: uniqueStrings(groups(preserved.excludeTerms, current.excludeTerms)),
       flexibleFields: cleanFlexibleFields([
-        ...(base.flexibleFields || []),
+        ...(preserved.flexibleFields || []),
         ...(current.flexibleFields || [])
       ]),
-      minPrice: current.minPrice !== null && current.minPrice !== undefined
+      minPrice: !relax.has('budget') && current.minPrice !== null && current.minPrice !== undefined
         ? current.minPrice
-        : base.minPrice ?? null,
-      maxPrice: current.maxPrice !== null && current.maxPrice !== undefined
+        : preserved.minPrice ?? null,
+      maxPrice: !relax.has('budget') && current.maxPrice !== null && current.maxPrice !== undefined
         ? current.maxPrice
-        : base.maxPrice ?? null,
-      inStockOnly: Boolean(base.inStockOnly || current.inStockOnly),
+        : preserved.maxPrice ?? null,
+      inStockOnly: Boolean(preserved.inStockOnly || current.inStockOnly),
+      relaxConstraints: cleanRelaxConstraints(current.relaxConstraints),
       limit: this.productPageSize()
     };
   }
@@ -832,6 +874,7 @@ class AiService {
       || currentRules.maxPrice !== null
       || currentRules.inStockOnly
       || currentRules.flexibleFields.length
+      || (route?.search?.relaxConstraints || []).length
     );
     const refining = Boolean(!pending && !explicitNewSubject && hasFollowUpFilters);
     const continuation = Boolean(
@@ -853,6 +896,7 @@ class AiService {
 
     return {
       ...route,
+      action: more || refining ? 'SEARCH' : route.action,
       intent: 'search_product',
       needDatabase: true,
       needWeb: false,
@@ -898,6 +942,7 @@ class AiService {
         );
         return {
           ...route,
+          action: 'ASK',
           showProducts: false,
           needFinalAi: false,
           responseMode: 'clarify',
@@ -923,6 +968,7 @@ class AiService {
       if (route.showProducts) {
         return {
           ...route,
+          action: 'ASK',
           showProducts: false,
           needFinalAi: false,
           responseMode: 'clarify',
@@ -1045,6 +1091,44 @@ class AiService {
 
     if (route?._catalogCategoryRejected) return route;
 
+    if (route?.consultation?.aiManaged) {
+      if (route.action === 'ASK' || route.responseMode === 'clarify') {
+        const pendingField = route.consultation.pendingField
+          || route.consultation.missingFields?.[0]
+          || 'details';
+        const kind = this.detectedProductKind([
+          message,
+          ...(route?.search?.requirements || []).flatMap((group) => group.terms || [])
+        ].join(' '));
+        return {
+          ...route,
+          action: 'ASK',
+          needDatabase: false,
+          showProducts: false,
+          needFinalAi: false,
+          responseMode: 'clarify',
+          clarificationQuestion: pendingField === 'sport'
+            ? this.catalogSportQuestion(kind)
+            : route.clarificationQuestion
+              || 'Bạn cho mình thêm một thông tin quan trọng để mình lọc đúng sản phẩm nhé?',
+          consultation: {
+            ...route.consultation,
+            ready: false,
+            pendingField
+          }
+        };
+      }
+      if (route.action === 'SEARCH') {
+        return {
+          ...route,
+          needDatabase: true,
+          search: { ...route.search, limit: this.productPageSize() },
+          consultation: { ...route.consultation, ready: true, pendingField: '', missingFields: [] }
+        };
+      }
+      return route;
+    }
+
     if (route?.responseMode === 'clarify' && route?.clarificationQuestion) {
       const pendingField = route?.consultation?.pendingField || 'details';
       const kind = this.detectedProductKind([
@@ -1053,6 +1137,7 @@ class AiService {
       ].join(' '));
       return {
         ...route,
+        action: 'ASK',
         showProducts: false,
         needFinalAi: false,
         clarificationQuestion: pendingField === 'sport'
@@ -1061,21 +1146,6 @@ class AiService {
         consultation: {
           ready: false,
           pendingField
-        }
-      };
-    }
-
-    if (route?.consultation?.aiManaged && route?.consultation?.ready) {
-      return {
-        ...route,
-        search: {
-          ...route.search,
-          limit: this.productPageSize()
-        },
-        consultation: {
-          ...route.consultation,
-          ready: true,
-          pendingField: ''
         }
       };
     }
@@ -1093,6 +1163,7 @@ class AiService {
     }
     return {
       ...route,
+      action: 'ASK',
       showProducts: false,
       needFinalAi: false,
       responseMode: 'clarify',
@@ -1117,6 +1188,7 @@ class AiService {
     if (!clarificationQuestion) return route;
     return {
       ...route,
+      action: 'ASK',
       showProducts: false,
       needFinalAi: false,
       responseMode: 'clarify',
@@ -1164,6 +1236,7 @@ class AiService {
 
     return {
       ...route,
+      action: 'ASK',
       responseMode: 'clarify',
       clarificationQuestion: this.catalogSportQuestion(rules.productKind),
       showProducts: false
@@ -1174,6 +1247,7 @@ class AiService {
     const rules = this.codeSearchRules(message);
     const codeShowProducts = this.codeShowProducts(message);
     const search = route.search || {};
+    const relax = new Set(cleanRelaxConstraints(search.relaxConstraints));
     const knownSurface = rules.requirements.some((group) => (
       group.scope === 'identity'
       && /mặt sân|bóng đá trong nhà/i.test(group.label || '')
@@ -1201,23 +1275,25 @@ class AiService {
 
     return this.applyCodeClarification({
       ...route,
-      showProducts: codeShowProducts === null ? route.showProducts : codeShowProducts,
+      showProducts: route?.consultation?.aiManaged
+        ? route.showProducts
+        : codeShowProducts === null ? route.showProducts : codeShowProducts,
       search: {
         ...search,
-        brands: uniqueStrings([...(rules.brands || []), ...(search.brands || [])]),
+        brands: uniqueStrings([...(relax.has('brand') ? [] : rules.brands || []), ...(search.brands || [])]),
         categories: uniqueStrings([...(rules.categories || []), ...aiCategories]),
-        colors: uniqueStrings([...(rules.colors || []), ...aiColors]),
-        sizes: uniqueStrings([...(rules.sizes || []), ...(search.sizes || [])]),
+        colors: uniqueNormalizedStrings([...(relax.has('color') ? [] : rules.colors || []), ...aiColors]),
+        sizes: uniqueNormalizedStrings([...(relax.has('size') ? [] : rules.sizes || []), ...(search.sizes || [])]),
         customerNeeds: uniqueStrings([...(rules.customerNeeds || []), ...(search.customerNeeds || [])]),
-        requirements: uniqueNeedGroups([...rules.requirements, ...aiRequirements]),
-        preferences: uniqueNeedGroups([...rules.preferences, ...(search.preferences || [])]),
+        requirements: uniqueNeedGroups([...(relax.has('requirements') ? [] : rules.requirements), ...aiRequirements]),
+        preferences: uniqueNeedGroups([...(relax.has('preferences') ? [] : rules.preferences), ...(search.preferences || [])]),
         excludeTerms: uniqueStrings([...rules.excludeTerms, ...aiExcludeTerms]),
         flexibleFields: cleanFlexibleFields([
           ...(rules.flexibleFields || []),
           ...(search.flexibleFields || [])
         ]),
-        minPrice: rules.minPrice !== null ? rules.minPrice : search.minPrice,
-        maxPrice: rules.maxPrice !== null ? rules.maxPrice : search.maxPrice,
+        minPrice: !relax.has('budget') && rules.minPrice !== null ? rules.minPrice : search.minPrice,
+        maxPrice: !relax.has('budget') && rules.maxPrice !== null ? rules.maxPrice : search.maxPrice,
         inStockOnly: rules.inStockOnly || Boolean(search.inStockOnly)
       }
     }, message, rules);
@@ -1279,6 +1355,11 @@ class AiService {
     }
 
     const raw = {
+      action: needsAdmin
+        ? 'HANDOFF'
+        : knowledgeQuestion || ['greeting', 'thanks'].includes(intent)
+          ? 'ANSWER'
+          : 'SEARCH',
       intent,
       needDatabase,
       needFinalAi: !['greeting', 'thanks', 'admin_handoff'].includes(intent),
@@ -1303,6 +1384,7 @@ class AiService {
         preferences: codeRules.preferences,
         excludeTerms: codeRules.excludeTerms,
         flexibleFields: codeRules.flexibleFields,
+        relaxConstraints: [],
         minPrice: codeRules.minPrice,
         maxPrice: codeRules.maxPrice,
         inStockOnly: codeRules.inStockOnly,
@@ -1362,6 +1444,36 @@ class AiService {
       { label: 'Tìm theo bộ môn', prompt: 'Hãy hỏi bộ môn tôi cần rồi tìm sản phẩm phù hợp' },
       { label: 'Tìm theo ngân sách', prompt: 'Hãy hỏi ngân sách của tôi rồi tìm sản phẩm phù hợp' }
     ]);
+  }
+
+  noResultSuggestions(route) {
+    const search = route?.search || {};
+    const suggestions = [];
+    if ((search.colors || []).length) {
+      suggestions.push({
+        label: 'Bỏ lọc màu',
+        prompt: `Tôi đồng ý bỏ yêu cầu màu ${(search.colors || []).join(', ')}; giữ nguyên các điều kiện còn lại và tìm lại`
+      });
+    }
+    if ((search.brands || []).length) {
+      suggestions.push({
+        label: 'Đổi hãng khác',
+        prompt: `Tôi đồng ý bỏ yêu cầu hãng ${(search.brands || []).join(', ')}; giữ nguyên các điều kiện còn lại và tìm lại`
+      });
+    }
+    if (search.minPrice !== null || search.maxPrice !== null) {
+      suggestions.push({
+        label: 'Nới ngân sách',
+        prompt: 'Tôi đồng ý nới giới hạn ngân sách; giữ nguyên các điều kiện còn lại và tìm lại'
+      });
+    }
+    if ((search.sizes || []).length) {
+      suggestions.push({
+        label: 'Bỏ lọc size',
+        prompt: `Tôi đồng ý bỏ yêu cầu size ${(search.sizes || []).join(', ')}; giữ nguyên các điều kiện còn lại và tìm lại`
+      });
+    }
+    return cleanSuggestions(suggestions);
   }
 
   fallbackFinal(message, route, candidates = [], warning = '') {
@@ -1432,7 +1544,7 @@ class AiService {
       const needText = criteria.length ? ` đáp ứng đồng thời ${criteria.join(', ')}` : '';
       reply = route?.consultation?.mode === 'more'
         ? 'Mình chưa tìm thấy thêm sản phẩm nào đáp ứng nguyên các tiêu chí trước đó. Bạn có muốn mở rộng ngân sách, đổi thương hiệu hoặc bỏ bớt một điều kiện không?'
-        : `Shop hiện chưa có sản phẩm${needText} trong kho. Mình sẽ không hiển thị sản phẩm khác màu hoặc sai điều kiện.`;
+        : `Shop hiện chưa có sản phẩm${needText} trong kho. Mình sẽ không tự đổi điều kiện; nếu muốn, bạn có thể cho phép mình nới một tiêu chí bên dưới.`;
     } else if (candidates.length === 1) {
       reply = `${correctionText}Mình đã tìm thấy “${candidates[0].name}”. Bạn có thể mở sản phẩm bên dưới để xem màu, size và biến thể.`;
     } else {
@@ -1443,7 +1555,9 @@ class AiService {
     return {
       reply,
       productIds,
-      suggestions: candidates.length ? this.fallbackSuggestions(message, route, candidates) : [],
+      suggestions: candidates.length
+        ? this.fallbackSuggestions(message, route, candidates)
+        : this.noResultSuggestions(route),
       needsAdmin: false,
       _source: 'code-final-fallback',
       _warning: cleanString(warning, 500)
@@ -1472,6 +1586,19 @@ class AiService {
       ? raw.consultation
       : {};
     const aiManaged = Boolean(options.aiManaged);
+    const requestedAction = String(raw?.action || '').trim().toUpperCase();
+    let action = ROUTER_ACTIONS.has(requestedAction)
+      ? requestedAction
+      : rawResponseMode === 'clarify'
+        ? 'ASK'
+        : Boolean(raw?.needsAdmin) || intent === 'admin_handoff'
+          ? 'HANDOFF'
+          : isKnowledge || ['greeting', 'thanks'].includes(intent)
+            ? 'ANSWER'
+            : Boolean(raw?.needDatabase) || needDatabaseByIntent
+              ? 'SEARCH'
+              : 'ANSWER';
+    if (action === 'ASK') action = 'ASK';
     const consultationReady = aiManaged
       ? rawConsultation.ready === undefined
         ? Boolean(raw?.showProducts && responseMode !== 'clarify')
@@ -1479,6 +1606,7 @@ class AiService {
       : Boolean(rawConsultation.ready);
 
     const normalized = {
+      action,
       intent,
       needDatabase: raw?.needDatabase === undefined ? needDatabaseByIntent : Boolean(raw.needDatabase),
       needWeb: isKnowledge ? raw?.needWeb !== false : Boolean(raw?.needWeb),
@@ -1499,6 +1627,7 @@ class AiService {
       consultation: {
         ready: consultationReady,
         pendingField: cleanString(rawConsultation.pendingField, 40),
+        missingFields: cleanList(rawConsultation.missingFields, 8, 40),
         aiManaged
       },
       search: {
@@ -1516,12 +1645,30 @@ class AiService {
         preferences: cleanNeedGroups(search.preferences, 8, 8),
         excludeTerms: cleanList(search.excludeTerms, 16, 100),
         flexibleFields: cleanFlexibleFields(search.flexibleFields),
+        relaxConstraints: cleanRelaxConstraints(search.relaxConstraints),
         minPrice: cleanPrice(search.minPrice),
         maxPrice: cleanPrice(search.maxPrice),
         inStockOnly: Boolean(search.inStockOnly),
         limit: Math.max(1, Math.min(10, Number(search.limit || this.config.maxCandidates || 5)))
       }
     };
+
+    if (normalized.action === 'ASK') {
+      normalized.needDatabase = false;
+      normalized.showProducts = false;
+      normalized.needFinalAi = false;
+      normalized.responseMode = 'clarify';
+      normalized.consultation.ready = false;
+    } else if (normalized.action === 'SEARCH') {
+      normalized.needDatabase = true;
+      normalized.consultation.ready = true;
+      normalized.consultation.pendingField = '';
+      normalized.consultation.missingFields = [];
+    } else if (normalized.action === 'HANDOFF') {
+      normalized.needsAdmin = true;
+      normalized.needDatabase = false;
+      normalized.showProducts = false;
+    }
 
     if (normalized.search.minPrice !== null && normalized.search.maxPrice !== null
       && normalized.search.minPrice > normalized.search.maxPrice) {
@@ -1545,6 +1692,12 @@ class AiService {
 
   routerDecisionIssue(route, message, history = []) {
     if (!route) return 'Router không tạo được quyết định.';
+    if (route.action === 'ASK' && (!route.clarificationQuestion || route.showProducts)) {
+      return 'Action ASK phải có một câu hỏi làm rõ và không được hiển thị sản phẩm.';
+    }
+    if (route.action === 'SEARCH' && !route.consultation?.ready) {
+      return 'Action SEARCH chỉ hợp lệ khi consultation.ready=true.';
+    }
     const currentQuestion = normalizeText(route.clarificationQuestion);
     const previousQuestion = normalizeText(this.lastAssistantText(history));
     if (
@@ -1586,7 +1739,7 @@ class AiService {
       'Không lặp câu hỏi cũ, không giải thích, không markdown và không thêm trường ngoài schema.',
       '',
       'QUY TẮC MODULE ROUTER:',
-      this.buildRouterSystemPrompt(),
+      this.buildRouterSystemPrompt(payload.catalogProfile),
       '',
       `REPAIR_REASON: ${cleanString(reason, 300)}`,
       'FIRST_DECISION:',
@@ -1613,6 +1766,13 @@ class AiService {
       corrections: resolution.corrections,
       forceAi: Boolean(options.forceAi),
       conversationState: this.conversationState(history),
+      catalogProfile: this.productService?.getCatalogProfile?.({
+        search: {
+          query: [resolution.query, this.conversationState(history)?.query].filter(Boolean).join(' '),
+          categories: this.conversationState(history)?.categories || [],
+          brands: this.conversationState(history)?.brands || []
+        }
+      }) || null,
       history: compactHistory
     };
     const key = this.cacheKey('router', payload);

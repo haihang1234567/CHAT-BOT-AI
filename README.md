@@ -1,10 +1,10 @@
-# GHS Local Chatbot – AI code-first tiết kiệm token
+# GHS Local Chatbot – AI điều phối, SQL truy xuất chính xác
 
 Chatbot tư vấn sản phẩm Green Holding Sport đọc sản phẩm, biến thể và tồn kho trực tiếp từ Haravan API. AI hoạt động theo kiến trúc:
 
 ```text
-Haiku phân tích nhu cầu thành JSON ngắn
-→ Sản phẩm: code lọc Haravan và dựng thẻ
+Haiku phân tích nhu cầu và chọn ASK / SEARCH / ANSWER / HANDOFF
+→ SEARCH: backend tạo SQL tham số hóa, kiểm chứng rồi dựng thẻ từ Haravan
 → Kiến thức: kho nội bộ có nguồn → thiếu mới gọi Tavily → Haiku tổng hợp có trích dẫn
 ```
 
@@ -63,9 +63,17 @@ chỉ khi đó mới tự phân tích lại một lần.
 Để bổ sung cách nói mới, xem `training/README.md`. Đây là dữ liệu huấn luyện
 router hội thoại; còn `knowledge/` chỉ chứa kiến thức thể thao đã kiểm chứng.
 
-### Code truy vấn dữ liệu
+### SQL truy vấn, code kiểm chứng dữ liệu
 
-Backend kiểm tra JSON, giới hạn độ dài và số lượng bộ lọc, sau đó tự tìm trong dữ liệu đã đồng bộ bằng code Node.js. Dữ liệu giá, màu, size, tồn kho, ảnh, nhóm sản phẩm và link đều lấy từ Haravan.
+Backend kiểm tra SearchPlan, giới hạn độ dài/số lượng bộ lọc rồi tạo câu SQL tham
+số hóa. SQLite chỉ là catalog cache được dựng lại từ Haravan sau mỗi lần đồng bộ;
+Haravan vẫn là nguồn sự thật duy nhất. Kết quả SQL phải qua Evidence Gate kiểm
+tra lại category, yêu cầu bắt buộc, màu, size, giá và tồn kho trước khi hiển thị.
+
+Router nhận Catalog Summary và Catalog Context liên quan thay vì toàn bộ catalog:
+loại, hãng, màu, size, khoảng giá và một số mẫu đại diện thật. Voyage lập chỉ mục
+toàn catalog để bổ sung tìm kiếm ngữ nghĩa cho nhu cầu mềm, nhưng không được vượt
+qua các điều kiện cứng.
 
 ### Tối ưu số lần gọi AI cho sản phẩm
 
@@ -93,7 +101,7 @@ Xem chi tiết tại `TWO_STAGE_AI.md`.
 ## Yêu cầu
 
 - Windows 10/11.
-- Node.js 18 trở lên.
+- Node.js 22.5 trở lên (dùng SQLite tích hợp sẵn của Node.js).
 - Internet khi gọi API AI và tải ảnh sản phẩm từ CDN.
 
 ## Chạy nhanh
@@ -169,7 +177,7 @@ AI_MESSAGES_PATH=/v1/chat/completions
 AI_AUTH_MODE=bearer
 ```
 
-Sau khi sửa `.env`, dừng bằng `Ctrl+C`, chạy lại `start-chatbot.cmd`, vào trang admin và bấm **Test API AI**. Nút kiểm tra dùng luồng code-first và gọi thử một lần AI trả lời.
+Sau khi sửa `.env`, dừng bằng `Ctrl+C`, chạy lại `start-chatbot.cmd`, vào trang admin và bấm **Test API AI**. Nút kiểm tra gọi thử Router AI và luồng truy xuất catalog hiện tại.
 
 ## Cấu hình số token
 

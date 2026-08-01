@@ -20,7 +20,8 @@ const store = new JsonStore(config.storePath);
 const embedding = new EmbeddingService(config.embedding);
 const products = new ProductService('', config.shopDomain, {
   loadCsv: false,
-  embeddingService: embedding
+  embeddingService: embedding,
+  catalogDbPath: config.catalogDbPath
 });
 const haravan = new HaravanService(config.haravan, products);
 const ai = new AiService(config.ai, products);
@@ -147,7 +148,7 @@ function productPageSize() {
 }
 
 async function productPage(route, fallbackQuery = '', excludedIds = []) {
-  if (!route?.needDatabase || !route?.showProducts) {
+  if ((route?.action && route.action !== 'SEARCH') || !route?.needDatabase || !route?.showProducts) {
     return { items: [], hasMore: false };
   }
   const pageSize = productPageSize();
@@ -225,6 +226,7 @@ function routeSource(route, suffix = '') {
 function routeMetadata(route) {
   if (!route) return null;
   return {
+    action: route.action,
     intent: route.intent,
     needDatabase: route.needDatabase,
     needWeb: route.needWeb,
@@ -505,7 +507,7 @@ async function handleApi(req, res, url) {
           });
         }
 
-        if (route.responseMode === 'clarify' && route.clarificationQuestion) {
+        if (route.action === 'ASK' || (route.responseMode === 'clarify' && route.clarificationQuestion)) {
           const replyMessage = store.addMessage(sessionId, 'assistant', route.clarificationQuestion, {
             source: routeSource(route, 'clarify'),
             route: routeMeta
@@ -722,6 +724,10 @@ async function handleApi(req, res, url) {
       catalog: products.status(),
       haravan: haravan.status()
     });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/admin/catalog-quality') {
+    return sendJson(res, 200, products.catalogQualityReport());
   }
 
   if (req.method === 'GET' && pathname === '/api/admin/products/search') {
