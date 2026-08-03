@@ -12,6 +12,9 @@ Haiku phân tích nhu cầu và chọn ASK / SEARCH / ANSWER / HANDOFF
 
 - Tìm theo Mã sản phẩm, Mã biến thể, SKU/Mã phiên bản sản phẩm, Barcode và tên sản phẩm.
 - Lọc theo thương hiệu, loại sản phẩm, màu, size, khoảng giá và tình trạng còn hàng.
+- Hiểu phủ định theo đúng cấp dữ liệu: loại hãng/category ở cấp sản phẩm, loại màu/size ở cấp biến thể.
+- Hỏi thêm khi khách mới nêu nhóm tổng quát như vợt, bóng, quần áo hoặc phụ kiện; lựa chọn được lấy động từ Haravan.
+- Hiểu “rẻ hơn/đắt hơn/size lớn hơn” dựa trên sản phẩm và biến thể vừa hiển thị, không đoán từ đoạn chat.
 - Hiển thị ảnh, màu, size, **Còn hàng/Hết hàng**, giá bán, giá gốc/khuyến mãi và link `https://www.greenholdingsport.vn`.
 - Tư vấn, so sánh và giải thích sản phẩm bằng AI dựa trên dữ liệu thật.
 - Tạo đơn nháp local, chưa đẩy đơn hàng thật lên Haravan hoặc KiotViet.
@@ -69,6 +72,9 @@ Backend kiểm tra SearchPlan, giới hạn độ dài/số lượng bộ lọc 
 số hóa. SQLite chỉ là catalog cache được dựng lại từ Haravan sau mỗi lần đồng bộ;
 Haravan vẫn là nguồn sự thật duy nhất. Kết quả SQL phải qua Evidence Gate kiểm
 tra lại category, yêu cầu bắt buộc, màu, size, giá và tồn kho trước khi hiển thị.
+SearchPlan do AI tạo không được dùng làm bằng chứng cho chính nó: category, hãng,
+màu, size và ngân sách phải xuất hiện trong lời khách hoặc trạng thái hội thoại
+đã xác nhận. Các điều kiện phủ định màu/size được áp dụng lên từng biến thể.
 
 Router nhận Catalog Summary và Catalog Context liên quan thay vì toàn bộ catalog:
 loại, hãng, màu, size, khoảng giá và một số mẫu đại diện thật. Voyage lập chỉ mục

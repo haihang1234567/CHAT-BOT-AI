@@ -133,12 +133,17 @@ function formatVnd(value) {
 
 function catalogProductKind(value) {
   const text = canonicalSearchText(value);
-  if (/(?:^|\s)vot(?:\s|$)/.test(text)) return 'racket';
   if (/(?:^|\s)giay(?:\s|$)/.test(text)) return 'shoe';
+  if (/(?:^|\s)(?:quan ao|trang phuc)(?:\s|$)/.test(text)) return 'apparel';
   if (/(?:^|\s)(?:ao|polo|tee|jacket)(?:\s|$)/.test(text)) return 'shirt';
   if (/(?:^|\s)(?:quan|short)(?:\s|$)/.test(text)) return 'pants';
+  if (/(?:^|\s)(?:tat|vo)(?:\s|$)/.test(text)) return 'socks';
   if (/(?:^|\s)(?:balo|ba lo|tui)(?:\s|$)/.test(text)) return 'bag';
-  if (/(?:^|\s)(?:qua bong|bong thi dau)(?:\s|$)/.test(text)) return 'ball';
+  if (/(?:^|\s)(?:bao ho|ong dong|bang goi|bang co tay)(?:\s|$)/.test(text)) return 'protection';
+  if (/(?:^|\s)(?:phu kien)(?:\s|$)/.test(text)) return 'accessory';
+  if (/(?:^|\s)(?:dung cu|thiet bi)(?:\s|$)/.test(text)) return 'equipment';
+  if (/(?:^|\s)vot(?:\s|$)/.test(text)) return 'racket';
+  if (/(?:^|\s)(?:qua bong|trai bong|bong thi dau|bong)(?:\s|$)/.test(text)) return 'ball';
   return 'other';
 }
 
@@ -448,7 +453,9 @@ class ProductService {
   catalogTypes(kind = '') {
     const stats = this.getCatalogSummary()?.typeStats || [];
     return stats
-      .filter((type) => !kind || type.kind === kind)
+      .filter((type) => !kind
+        || type.kind === kind
+        || kind === 'apparel' && ['shirt', 'pants'].includes(type.kind))
       .map((type) => type.name);
   }
 
@@ -463,7 +470,9 @@ class ProductService {
     const queryWords = new Set(query.split(' ').filter(Boolean));
 
     return (this.getCatalogSummary()?.typeStats || [])
-      .filter((type) => !kind || type.kind === kind)
+      .filter((type) => !kind
+        || type.kind === kind
+        || kind === 'apparel' && ['shirt', 'pants'].includes(type.kind))
       .filter((type) => {
         if (termInText(query, type.normalized)) return true;
         const distinctive = type.normalized
@@ -497,7 +506,9 @@ class ProductService {
         .includes(previousToken)
         || ['mau sac'].includes(previousTwoTokens);
       if (
-        token.length < 3
+        // Token ba ký tự sau khi bỏ dấu thường là từ giao tiếp ("hãy" → "hay").
+        // Không dùng edit-distance catalog cho nhóm này để tránh tự tạo nghĩa sai.
+        token.length < 4
         || /\d/.test(token)
         || this.codeIndex.has(exactCode)
         || protectedWords.has(token)
@@ -588,7 +599,9 @@ class ProductService {
     if (normalized) this.codeIndex.set(normalized, result);
   }
 
-  publicProduct(product, matchedVariant = null) {
+  publicProduct(product, matchedVariant = null, visibleVariants = null) {
+    const variants = Array.isArray(visibleVariants) ? visibleVariants : product.variants;
+    const visiblePrices = variants.map((variant) => Number(variant.price || 0)).filter((price) => price > 0);
     return {
       id: product.id,
       name: product.name,
@@ -599,16 +612,16 @@ class ProductService {
       excerpt: product.excerpt,
       description: product.description,
       images: product.images,
-      colors: product.colors,
-      sizes: product.sizes,
-      inStock: product.inStock,
-      priceMin: product.priceMin,
-      priceMax: product.priceMax,
+      colors: unique(variants.map((variant) => variant.color)),
+      sizes: unique(variants.map((variant) => variant.size)),
+      inStock: variants.some((variant) => variant.inStock),
+      priceMin: visiblePrices.length ? Math.min(...visiblePrices) : product.priceMin,
+      priceMax: visiblePrices.length ? Math.max(...visiblePrices) : product.priceMax,
       compareAtMin: product.compareAtMin,
       compareAtMax: product.compareAtMax,
       hasSale: product.hasSale,
       matchedVariantId: matchedVariant?.id || null,
-      variants: product.variants
+      variants
     };
   }
 
@@ -826,6 +839,16 @@ class ProductService {
   variantMatchesPlan(variant, filters) {
     if (filters.inStockOnly && !variant.inStock) return false;
 
+    if (filters.excludeColors.length) {
+      const color = canonicalSearchText(variant.color);
+      if (color && filters.excludeColors.some((unwanted) => termInText(color, unwanted))) return false;
+    }
+
+    if (filters.excludeSizes.length) {
+      const size = normalizeText(variant.size).replace(/\s/g, '');
+      if (size && filters.excludeSizes.some((unwanted) => size === unwanted.replace(/\s/g, ''))) return false;
+    }
+
     if (filters.colors.length) {
       const color = canonicalSearchText(variant.color);
       // Thuộc tính rỗng là dữ liệu chưa biết, tuyệt đối không được coi là khớp mọi màu.
@@ -875,6 +898,10 @@ class ProductService {
       categories: this.normalizedList(search.categories),
       colors: this.normalizedList(search.colors),
       sizes: this.normalizedList(search.sizes),
+      excludeBrands: this.normalizedList(search.excludeBrands),
+      excludeCategories: this.normalizedList(search.excludeCategories),
+      excludeColors: this.normalizedList(search.excludeColors),
+      excludeSizes: this.normalizedList(search.excludeSizes),
       requirements: this.normalizedNeedGroups(search.requirements),
       preferences: this.normalizedNeedGroups(search.preferences),
       excludeTerms: this.normalizedList(search.excludeTerms),
@@ -916,7 +943,8 @@ class ProductService {
     const hasStructuredFilters = filters.names.length || filters.brands.length || filters.categories.length
       || filters.colors.length || filters.sizes.length || filters.minPrice !== null
       || filters.maxPrice !== null || filters.inStockOnly || filters.requirements.length
-      || filters.excludeTerms.length;
+      || filters.excludeTerms.length || filters.excludeBrands.length || filters.excludeCategories.length
+      || filters.excludeColors.length || filters.excludeSizes.length;
     const pool = filters.productIds.length
       ? [...exactIds].map((id) => this.productById.get(id)).filter(Boolean)
       : candidateIds.size && !hasStructuredFilters
@@ -937,11 +965,18 @@ class ProductService {
         score += 180;
       }
 
+      if (filters.excludeBrands.some((unwanted) => (
+        brand === unwanted || productName.includes(unwanted)
+      ))) continue;
+
       if (filters.categories.length) {
         const matched = filters.categories.some((wanted) => searchable.includes(wanted));
         if (!matched) continue;
         score += 150;
       }
+
+
+      if (filters.excludeCategories.some((unwanted) => termInText(product.identityText, unwanted))) continue;
 
       if (filters.names.length) {
         const matched = filters.names.some((wanted) => {
@@ -953,12 +988,13 @@ class ProductService {
         score += 250;
       }
 
-      if (filters.excludeTerms.some((term) => termInText(product.identityText, term))) continue;
+      if (filters.excludeTerms.some((term) => termInText(product.searchText, term))) continue;
       if (filters.requirements.some((group) => !this.productMatchesNeedGroup(product, group))) continue;
 
       const matchingVariants = product.variants.filter((variant) => this.variantMatchesPlan(variant, filters));
       const hasVariantFilters = filters.colors.length || filters.sizes.length || filters.minPrice !== null
-        || filters.maxPrice !== null || filters.inStockOnly;
+        || filters.maxPrice !== null || filters.inStockOnly
+        || filters.excludeColors.length || filters.excludeSizes.length;
       if (hasVariantFilters && !matchingVariants.length) continue;
 
       if (filters.colors.length) score += 120;
@@ -986,7 +1022,21 @@ class ProductService {
     let results = scored
       .sort((a, b) => b.score - a.score || a.product.priceMin - b.product.priceMin)
       .slice(0, safeLimit)
-      .map(({ product, matchedVariant }) => this.publicProduct(product, matchedVariant));
+      .map(({ product, matchedVariant }) => {
+        const visibleVariants = product.variants.filter((variant) => (
+          !filters.excludeColors.length && !filters.excludeSizes.length
+            ? true
+            : this.variantMatchesPlan(variant, {
+                ...filters,
+                colors: [],
+                sizes: [],
+                minPrice: null,
+                maxPrice: null,
+                inStockOnly: false
+              })
+        ));
+        return this.publicProduct(product, matchedVariant, visibleVariants);
+      });
 
     if (!results.length && exactResults.length && !options.strictFilters) {
       results = exactResults.slice(0, safeLimit).map(({ product, variant }) => this.publicProduct(product, variant));
@@ -995,6 +1045,8 @@ class ProductService {
     // Nếu AI bóc tách quá chặt làm rỗng kết quả, fallback sang tìm kiếm chữ để chatbot không bị “cụt”.
     const hasHardFilters = Boolean(
       filters.categories.length || filters.colors.length || filters.sizes.length
+      || filters.excludeBrands.length || filters.excludeCategories.length
+      || filters.excludeColors.length || filters.excludeSizes.length
       || filters.minPrice !== null || filters.maxPrice !== null || filters.inStockOnly
       || filters.requirements.length || filters.excludeTerms.length
     );
@@ -1038,6 +1090,8 @@ class ProductService {
       const hasHardConstraints = Boolean(
         (search.codes || []).length || (search.productIds || []).length || (search.categories || []).length
         || (search.brands || []).length || (search.colors || []).length || (search.sizes || []).length
+        || (search.excludeBrands || []).length || (search.excludeCategories || []).length
+        || (search.excludeColors || []).length || (search.excludeSizes || []).length
         || (search.requirements || []).length || (search.excludeTerms || []).length
         || search.minPrice !== null && search.minPrice !== undefined
         || search.maxPrice !== null && search.maxPrice !== undefined

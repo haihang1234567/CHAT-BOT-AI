@@ -152,6 +152,10 @@ class CatalogDatabase {
       categories: unique(search.categories),
       colors: unique(search.colors),
       sizes: unique(search.sizes).map((size) => size.replace(/\s/g, '')),
+      excludeBrands: unique(search.excludeBrands),
+      excludeCategories: unique(search.excludeCategories),
+      excludeColors: unique(search.excludeColors),
+      excludeSizes: unique(search.excludeSizes).map((size) => size.replace(/\s/g, '')),
       requirements: (Array.isArray(search.requirements) ? search.requirements : [])
         .map((group) => ({
           scope: group?.scope === 'identity' ? 'identity' : 'details',
@@ -198,10 +202,22 @@ class CatalogDatabase {
       for (const brand of filters.brands) params.push(brand, `%${brand}%`);
       scores.push('400');
     }
+    if (filters.excludeBrands.length) {
+      where.push(`p.normalized_brand NOT IN (${placeholders(filters.excludeBrands.length)})`);
+      params.push(...filters.excludeBrands);
+      for (const brand of filters.excludeBrands) {
+        where.push('p.normalized_name NOT LIKE ?');
+        params.push(`%${brand}%`);
+      }
+    }
     if (filters.categories.length) {
       where.push(`(${filters.categories.map(() => '(p.normalized_type LIKE ? OR p.identity_text LIKE ?)').join(' OR ')})`);
       for (const category of filters.categories) params.push(`%${category}%`, `%${category}%`);
       scores.push('350');
+    }
+    for (const category of filters.excludeCategories) {
+      where.push('p.normalized_type NOT LIKE ?');
+      params.push(`%${category}%`);
     }
     if (filters.names.length) {
       where.push(`(${filters.names.map(() => '(p.normalized_name LIKE ? OR p.identity_text LIKE ?)').join(' OR ')})`);
@@ -215,7 +231,7 @@ class CatalogDatabase {
       scores.push('250');
     }
     for (const term of filters.excludeTerms) {
-      where.push('p.identity_text NOT LIKE ?');
+      where.push('p.search_text NOT LIKE ?');
       params.push(`%${term}%`);
     }
 
@@ -231,6 +247,14 @@ class CatalogDatabase {
       params.push(...filters.sizes);
       scores.push('300');
     }
+    for (const color of filters.excludeColors) {
+      variantWhere.push('v.normalized_color NOT LIKE ?');
+      params.push(`%${color}%`);
+    }
+    if (filters.excludeSizes.length) {
+      variantWhere.push(`v.normalized_size NOT IN (${placeholders(filters.excludeSizes.length)})`);
+      params.push(...filters.excludeSizes);
+    }
     if (filters.minPrice !== null) {
       variantWhere.push('v.price >= ?');
       params.push(filters.minPrice);
@@ -242,6 +266,7 @@ class CatalogDatabase {
       scores.push('150');
     }
     const hasVariantConstraint = filters.inStockOnly || filters.colors.length || filters.sizes.length
+      || filters.excludeColors.length || filters.excludeSizes.length
       || filters.minPrice !== null || filters.maxPrice !== null;
     if (hasVariantConstraint) where.push(`EXISTS (SELECT 1 FROM variants v WHERE ${variantWhere.join(' AND ')})`);
 
@@ -258,6 +283,8 @@ class CatalogDatabase {
     const hasStructured = Boolean(
       filters.productIds.length || filters.codes.length || filters.names.length || filters.brands.length
       || filters.categories.length || filters.colors.length || filters.sizes.length || filters.requirements.length
+      || filters.excludeBrands.length || filters.excludeCategories.length
+      || filters.excludeColors.length || filters.excludeSizes.length
       || filters.excludeTerms.length || filters.minPrice !== null || filters.maxPrice !== null
     );
     if (queryTokens.length) {
