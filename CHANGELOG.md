@@ -7,6 +7,7 @@
 - Thêm loại trừ có cấu trúc theo hãng, category, màu và size; màu/size bị loại được lọc đúng ở cấp biến thể.
 - So sánh “rẻ hơn/đắt hơn/size lớn hơn/nhỏ hơn” bằng sản phẩm và biến thể thật vừa hiển thị.
 - Không sửa edit-distance các từ giao tiếp ba ký tự sau khi bỏ dấu, tránh lỗi “hãy” thành “hay/han/hai”.
+- Khóa loại sản phẩm bằng facet `product_kind` và cột `type` Haravan, tránh tên “quần vợt/pickleball” khiến giày lọt vào kết quả vợt.
 
 ## 1.5.0 – AI điều phối và SQL catalog
 
