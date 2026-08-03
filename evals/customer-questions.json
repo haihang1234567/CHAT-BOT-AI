@@ -197,6 +197,39 @@
         "relaxOnlyAfterConsent": true
       },
       "note": "Hết hàng đúng tiêu chí phải báo thật và xin phép trước khi nới điều kiện."
+    },
+    {
+      "id": "generic-catalog-kind-ask-001",
+      "question": "có vợt không",
+      "expected": {
+        "action": "ASK",
+        "showProducts": false,
+        "clarificationUsesCatalogOptions": true
+      },
+      "note": "Nhóm tổng quát phải hỏi nhánh công năng từ catalog, không tự chọn cầu lông."
+    },
+    {
+      "id": "variant-negation-001",
+      "question": "áo cầu lông không phải màu đen",
+      "expected": {
+        "excludeColorsIncludes": ["đen"],
+        "colorsMustNotInclude": ["đen"],
+        "excludedVariantsMustNotDisplay": true
+      },
+      "note": "Phủ định màu áp dụng ở cấp biến thể, không loại nhầm toàn bộ sản phẩm."
+    },
+    {
+      "id": "relative-price-reference-001",
+      "question": "có mẫu nào rẻ hơn cái vừa xem không",
+      "context": {
+        "requiresSingleReferenceProduct": true
+      },
+      "expected": {
+        "action": "SEARCH",
+        "maxPriceBelowReference": true,
+        "excludeReferenceProduct": true
+      },
+      "note": "Giá so sánh lấy từ biến thể thật vừa hiển thị, không đoán từ text lịch sử."
     }
   ]
 }

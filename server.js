@@ -143,6 +143,13 @@ function productCardsByIds(ids, fallbackCandidates = []) {
   return Array.isArray(ids) ? selected : fallbackCandidates.slice(0, 5);
 }
 
+function productVariantContext(items = []) {
+  return (items || []).map((item) => ({
+    productId: String(item.id),
+    variantId: item.matchedVariantId ? String(item.matchedVariantId) : ''
+  }));
+}
+
 function productPageSize() {
   return Math.max(1, Math.min(5, Number(config.ai.chatProductPageSize || 3)));
 }
@@ -407,6 +414,7 @@ async function handleApi(req, res, url) {
       source: 'product-pagination-code',
       productIds: nextIds,
       contextProductIds: nextIds,
+      contextVariants: productVariantContext(nextPage.items),
       suggestions,
       sources: [],
       route,
@@ -625,6 +633,7 @@ async function handleApi(req, res, url) {
       source,
       productIds: displayedProductIds,
       contextProductIds: responseData.contextProductIds || responseData.products.map((item) => item.id),
+      contextVariants: productVariantContext(responseData.products),
       suggestions: responseData.suggestions || [],
       sources: responseData.sources || [],
       route: routeMeta,

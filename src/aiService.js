@@ -66,6 +66,10 @@ function uniqueStrings(values) {
   return [...new Set((values || []).map((value) => cleanString(value, 160)).filter(Boolean))];
 }
 
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function uniqueNormalizedStrings(values) {
   const seen = new Set();
   return (values || []).map((value) => cleanString(value, 160)).filter((value) => {
@@ -285,6 +289,10 @@ class AiService {
       categories: cleanList(search.categories, 5, 100),
       colors: cleanList(search.colors, 5, 80),
       sizes: cleanList(search.sizes, 5, 40),
+      excludeBrands: cleanList(search.excludeBrands, 5, 80),
+      excludeCategories: cleanList(search.excludeCategories, 5, 100),
+      excludeColors: cleanList(search.excludeColors, 5, 80),
+      excludeSizes: cleanList(search.excludeSizes, 5, 40),
       customerNeeds: cleanList(search.customerNeeds, 6, 120),
       requirements: cleanNeedGroups(search.requirements, 5, 5),
       preferences: cleanNeedGroups(search.preferences, 5, 5),
@@ -352,6 +360,8 @@ class AiService {
       'Với sản phẩm, suy luận đầy đủ khách cần gì: bộ môn, loại hàng, mục đích, môi trường/mặt sân, đặc điểm người dùng, hãng, size, màu, ngân sách và tồn kho.',
       'requirements là điều kiện bắt buộc; preferences là ưu tiên. Không tự hạ điều kiện bắt buộc để lấy sản phẩm gần đúng.',
       'Mỗi requirements/preferences là một nhóm OR; nhiều nhóm khác nhau phải đồng thời thỏa mãn.',
+      'Khi khách phủ định hoặc loại trừ bằng “không phải”, “không muốn”, “không lấy”, “trừ”, “ngoại trừ”, “đừng gợi ý”: đưa hãng vào excludeBrands, loại hàng vào excludeCategories, màu vào excludeColors, size vào excludeSizes; thuộc tính khác mới đưa vào excludeTerms. Không đồng thời đưa giá trị bị loại vào brands/categories/colors/sizes.',
+      'Một câu có thể chứa cả điều kiện bắt buộc và điều kiện loại trừ. Ví dụ “giày bóng đá Mizuno nhưng không màu đen” giữ Mizuno trong brands và đưa đen vào excludeColors.',
       'Dùng scope=identity cho bộ môn, loại hàng, dòng sản phẩm hoặc mã kỹ thuật; scope=details cho tính năng và nhu cầu sử dụng.',
       'Với câu hỏi kiến thức, đặt intent=general_question, needWeb=true, showProducts=false và viết webQuery ngắn gọn để tìm nguồn chính thống.',
       'Không tự trả lời kiến thức trong bước này. Backend sẽ tìm nguồn rồi mới gọi AI tổng hợp.',
@@ -369,13 +379,15 @@ class AiService {
       'Giữ lại các nhu cầu đã có trong CONVERSATION_STATE, bổ sung dữ kiện mới rồi quyết định đã đủ để tìm sản phẩm hay chưa.',
       'Không lặp lại clarificationQuestion cũ khi MESSAGE đã cung cấp được pendingField. Nếu thật sự chưa hiểu, hãy hỏi lại tự nhiên và nêu ví dụ phù hợp.',
       'Khi không có pendingField, chỉ dùng HISTORY nếu khách tham chiếu rõ “mẫu này”, “đôi trên”, “các mẫu vừa gợi ý” hoặc đang tiếp tục nhu cầu trước đó.',
+      'REFERENCE_CONTEXT chứa dữ liệu thật của sản phẩm/biến thể vừa hiển thị. Với “rẻ hơn/đắt hơn/size lớn hơn/nhỏ hơn”, chỉ so sánh bằng số trong REFERENCE_CONTEXT; nếu có nhiều sản phẩm tham chiếu mà khách không chỉ rõ, phải ASK khách chọn sản phẩm.',
+      'Nếu khách chỉ nói một nhóm hàng tổng quát mà catalog có nhiều loại công năng khác nhau (giày, vợt, bóng, quần áo, túi, phụ kiện, bảo hộ, dụng cụ...), phải ASK loại/bộ môn/mục đích quan trọng nhất trước; không tự chọn một nhánh catalog.',
       'SearchPlan chỉ chứa dữ kiện khách đã nói hoặc suy ra chắc chắn từ ngữ cảnh. Không tự thêm màu, hãng, size, ngân sách hay công năng.',
       'Không tự nới điều kiện khi không có kết quả. Chỉ điền search.relaxConstraints sau khi khách nói rõ đồng ý bỏ/nới trường tương ứng.',
       'Giá đổi thành VND nguyên. Không viết SQL; backend tự tạo SQL tham số hóa. Không bịa dữ liệu và không thêm trường ngoài schema.',
       'BỘ KIẾN THỨC VÀ VÍ DỤ ĐÃ DUYỆT:',
       buildRouterTrainingPrompt(this.catalogSummary()),
       'JSON_SCHEMA:',
-      '{"action":"ASK|SEARCH|ANSWER|HANDOFF","intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","consultation":{"ready":true,"pendingField":"","missingFields":[]},"search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"flexibleFields":["budget"],"relaxConstraints":["color"],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
+      '{"action":"ASK|SEARCH|ANSWER|HANDOFF","intent":"greeting|thanks|search_by_code|search_product|product_detail|product_recommendation|compare_products|create_order|order_help|admin_handoff|general_question|unknown","needDatabase":true,"needWeb":false,"webQuery":"","showProducts":true,"needsAdmin":false,"responseMode":"brief|detail|recommend|compare|order|clarify","clarificationQuestion":"","consultation":{"ready":true,"pendingField":"","missingFields":[]},"search":{"query":"","codes":[],"productIds":[],"names":[],"brands":[],"categories":[],"colors":[],"sizes":[],"excludeBrands":[],"excludeCategories":[],"excludeColors":[],"excludeSizes":[],"customerNeeds":[],"requirements":[{"label":"","terms":[],"scope":"identity|details"}],"preferences":[{"label":"","terms":[],"scope":"identity|details"}],"excludeTerms":[],"excludeProductIds":[],"flexibleFields":["budget"],"relaxConstraints":["color"],"minPrice":null,"maxPrice":null,"inStockOnly":false,"limit":5}}'
     ].join('\n');
   }
 
@@ -569,16 +581,30 @@ class AiService {
   codeSearchRules(message) {
     const expandedMessage = expandChatSlang(message);
     const q = canonicalSearchText(expandedMessage);
+    const negativePrefix = '(?:khong phai|khong muon|khong lay|khong can|loai bo|tru|ngoai tru|dung goi y)';
+    const isNegated = (value, optionalLabel = '') => {
+      const normalizedValue = canonicalSearchText(value);
+      if (!normalizedValue) return false;
+      const label = optionalLabel ? `(?:${optionalLabel})?\\s*` : '';
+      return new RegExp(`${negativePrefix}[^,.;]{0,35}?${label}${escapeRegExp(normalizedValue)}(?:$|\\s|[,.;])`).test(q);
+    };
     const productKindRules = [
       { kind: 'shoe', label: 'Giày', terms: ['giày'], pattern: /\b(giay|sneaker|doi giay)\b/ },
       { kind: 'racket', label: 'Vợt', terms: ['vợt'], pattern: /\b(vot)\b/ },
       { kind: 'ball', label: 'Quả bóng', terms: ['quả bóng', 'bóng thi đấu'], pattern: /\b(qua bong|trai bong|bong thi dau)\b/ },
+      { kind: 'apparel', label: 'Quần áo', terms: ['quần áo', 'trang phục'], pattern: /\b(quan ao|trang phuc)\b/ },
       { kind: 'shirt', label: 'Áo', terms: ['áo'], pattern: /\b(ao|polo|tee|tank top|jacket)\b/ },
       { kind: 'pants', label: 'Quần', terms: ['quần', 'short'], pattern: /\b(quan|short)\b/ },
       { kind: 'socks', label: 'Tất', terms: ['tất', 'vớ'], pattern: /\b(tat|vo)\b/ },
-      { kind: 'bag', label: 'Balo hoặc túi', terms: ['balo', 'ba lô', 'túi'], pattern: /\b(balo|ba lo|tui)\b/ }
+      { kind: 'bag', label: 'Balo hoặc túi', terms: ['balo', 'ba lô', 'túi'], pattern: /\b(balo|ba lo|tui)\b/ },
+      { kind: 'protection', label: 'Đồ bảo hộ', terms: ['bảo hộ'], pattern: /\b(bao ho|ong dong|bang goi|bang co tay)\b/ },
+      { kind: 'accessory', label: 'Phụ kiện', terms: ['phụ kiện'], pattern: /\b(phu kien)\b/ },
+      { kind: 'equipment', label: 'Dụng cụ', terms: ['dụng cụ'], pattern: /\b(dung cu|thiet bi tap)\b/ }
     ];
-    const productKind = productKindRules.find((rule) => rule.pattern.test(q)) || null;
+    let productKind = productKindRules.find((rule) => rule.pattern.test(q)) || null;
+    if (!productKind && /\b(tf|as|fg|sg|ag|ic|in|turf)\b/.test(q)) {
+      productKind = productKindRules.find((rule) => rule.kind === 'shoe');
+    }
     let catalogQuery = q;
     if (productKind?.kind === 'shoe' && /\b(san (?:5|7|11)|co nhan tao|co tu nhien|futsal)\b/.test(q)) {
       catalogQuery = `${catalogQuery} bong da`;
@@ -586,11 +612,14 @@ class AiService {
     if (productKind?.kind === 'shoe' && /\b(giay chay|trail|dia hinh|duong mon|jogging)\b/.test(q)) {
       catalogQuery = `${catalogQuery} chay bo`;
     }
-    const categories = this.productService?.matchCatalogTypes?.(catalogQuery, {
+    if (productKind?.kind === 'shoe' && /\b(tf|as|fg|sg|ag|ic|in|turf)\b/.test(q)) {
+      catalogQuery = `${catalogQuery} bong da`;
+    }
+    let categories = this.productService?.matchCatalogTypes?.(catalogQuery, {
       kind: productKind?.kind || ''
     }).slice(0, 8) || [];
     const knownBrands = this.productService?.catalogBrands?.() || [];
-    const brands = knownBrands.filter((brand) => {
+    let brands = knownBrands.filter((brand) => {
       const escaped = normalizeText(brand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       return escaped && new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(q);
     });
@@ -600,7 +629,7 @@ class AiService {
     ];
     const colorContext = q.match(/\b(?:mau|color)\b([\s\S]{0,80})/);
     const colorText = colorContext ? colorContext[1] : '';
-    const colors = colorDictionary.filter((color) => {
+    let colors = colorDictionary.filter((color) => {
       if (!colorText) return false;
       const escaped = color.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(colorText);
@@ -612,9 +641,28 @@ class AiService {
       sizes.push(match[1].replace(',', '.'));
     }
 
+    const excludeBrands = brands.filter((brand) => isNegated(brand, '(?:hang|thuong hieu)'));
+    const excludeCategories = categories.filter((category) => isNegated(category, '(?:loai|dong)'));
+    const excludeColors = colors.filter((color) => isNegated(color, '(?:mau|color)'));
+    const excludeSizes = sizes.filter((size) => isNegated(size, '(?:size|sz|kich thuoc|kich co)'));
+    brands = brands.filter((brand) => !excludeBrands.includes(brand));
+    categories = categories.filter((category) => !excludeCategories.includes(category));
+    colors = colors.filter((color) => !excludeColors.includes(color));
+    const positiveSizes = sizes.filter((size) => !excludeSizes.includes(size));
+
     const requirements = [];
     const preferences = [];
     const excludeTerms = [];
+    const technicalExclusions = [
+      ['fg', 'fg'], ['sg', 'sg'], ['tf', 'tf'], ['as', 'as'], ['ic', 'ic'], ['in', 'in'],
+      ['cỏ nhân tạo', 'co nhan tao'], ['cỏ tự nhiên', 'co tu nhien'],
+      ['trung quốc', '(?:hang )?trung quoc']
+    ];
+    for (const [label, pattern] of technicalExclusions) {
+      if (new RegExp(`${negativePrefix}[^,.;]{0,35}?(?:${pattern})(?:$|\\s|[,.;])`).test(q)) {
+        excludeTerms.push(label);
+      }
+    }
     const customerNeeds = [];
     if (productKind) {
       requirements.push({
@@ -687,7 +735,11 @@ class AiService {
       brands,
       categories,
       colors: uniqueStrings(colors),
-      sizes: uniqueStrings(sizes),
+      sizes: uniqueStrings(positiveSizes),
+      excludeBrands: uniqueStrings(excludeBrands),
+      excludeCategories: uniqueStrings(excludeCategories),
+      excludeColors: uniqueStrings(excludeColors),
+      excludeSizes: uniqueStrings(excludeSizes),
       customerNeeds,
       requirements,
       preferences,
@@ -706,10 +758,14 @@ class AiService {
       ['shoe', /\b(giay|sneaker)\b/],
       ['racket', /\b(vot)\b/],
       ['ball', /\b(qua bong|trai bong|bong thi dau)\b/],
+      ['apparel', /\b(quan ao|trang phuc)\b/],
       ['shirt', /\b(ao|polo|tee|tank top|jacket)\b/],
       ['pants', /\b(quan|short)\b/],
       ['socks', /\b(tat|vo)\b/],
-      ['bag', /\b(balo|ba lo|tui)\b/]
+      ['bag', /\b(balo|ba lo|tui)\b/],
+      ['protection', /\b(bao ho|ong dong|bang goi|bang co tay)\b/],
+      ['accessory', /\b(phu kien)\b/],
+      ['equipment', /\b(dung cu|thiet bi tap)\b/]
     ];
     return rules.find(([, pattern]) => pattern.test(text))?.[0] || '';
   }
@@ -719,10 +775,14 @@ class AiService {
       shoe: 'giày',
       racket: 'vợt',
       ball: 'bóng',
+      apparel: 'quần áo',
       shirt: 'áo',
       pants: 'quần',
       socks: 'tất',
-      bag: 'balo hoặc túi'
+      bag: 'balo hoặc túi',
+      protection: 'đồ bảo hộ',
+      accessory: 'phụ kiện',
+      equipment: 'dụng cụ'
     }[kind] || 'sản phẩm';
   }
 
@@ -736,7 +796,13 @@ class AiService {
       racket: /^vợt\s+/i,
       ball: /^(?:quả\s+)?bóng\s+/i,
       shirt: /^áo\s+/i,
-      pants: /^quần\s+/i
+      pants: /^quần\s+/i,
+      apparel: /^(?:quần áo|trang phục)\s+/i,
+      socks: /^(?:tất|vớ)\s+/i,
+      bag: /^(?:balo|ba lô|túi)\s+/i,
+      protection: /^(?:đồ )?bảo hộ\s+/i,
+      accessory: /^phụ kiện\s+/i,
+      equipment: /^(?:dụng cụ|thiết bị)\s+/i
     };
     return cleanString(String(type || '').replace(prefixes[kind] || /^$/, ''), 100);
   }
@@ -755,6 +821,77 @@ class AiService {
       return `Shop hiện chưa có ${kindLabel} còn hàng trong danh mục. Bạn muốn tìm loại sản phẩm khác không?`;
     }
     return `Bạn cần ${kindLabel} loại nào trong danh mục hiện có: ${this.joinChoices(choices)}?`;
+  }
+
+  groundSearchPlanToCustomerEvidence(route, message, history = []) {
+    const search = route?.search || {};
+    const rules = this.codeSearchRules(message);
+    const previous = this.lastProductContext(history);
+    const continuingConfirmedNeed = Boolean(
+      route?.consultation?.mode === 'more'
+      || route?.consultation?.mode === 'refine'
+      || route?.consultation?.mode === 'continue'
+      || previous?.consultation?.pendingField
+    );
+    if (continuingConfirmedNeed) return route;
+
+    return {
+      ...route,
+      search: {
+        ...search,
+        // Các field cấu trúc chỉ được giữ khi có bằng chứng trong lời khách.
+        // Query do AI viết không được dùng để tự xác nhận chính suy luận của AI.
+        query: cleanString(this.catalogResolution(message).query || message, 500),
+        brands: rules.brands,
+        categories: rules.categories,
+        colors: rules.colors,
+        sizes: rules.sizes,
+        excludeBrands: rules.excludeBrands,
+        excludeCategories: rules.excludeCategories,
+        excludeColors: rules.excludeColors,
+        excludeSizes: rules.excludeSizes,
+        minPrice: rules.minPrice,
+        maxPrice: rules.maxPrice
+      }
+    };
+  }
+
+  applyCatalogSpecificityGate(route, message, history = []) {
+    if (!['search_product', 'product_recommendation', 'compare_products', 'create_order'].includes(route?.intent)) {
+      return route;
+    }
+    if ((route?.search?.codes || []).length || (route?.search?.productIds || []).length) return route;
+
+    const rules = this.codeSearchRules(message);
+    const kind = rules.productKind || this.detectedProductKind(message);
+    if (!kind) return route;
+    const explicitCategories = rules.categories || [];
+    const previous = this.lastProductContext(history);
+    const pendingCategory = previous?.consultation?.pendingField === 'sport';
+    if (explicitCategories.length || pendingCategory) return route;
+
+    const availableTypes = this.catalogTypesForKind(kind);
+    if (!availableTypes.length) return route;
+    return {
+      ...route,
+      action: 'ASK',
+      needDatabase: false,
+      showProducts: false,
+      needFinalAi: false,
+      responseMode: 'clarify',
+      clarificationQuestion: this.catalogSportQuestion(kind),
+      consultation: {
+        ...(route.consultation || {}),
+        ready: false,
+        pendingField: 'sport',
+        missingFields: ['sport'],
+        aiManaged: false
+      },
+      search: {
+        ...(route.search || {}),
+        categories: []
+      }
+    };
   }
 
   unavailableCatalogQuestion(message, kind = '') {
@@ -800,11 +937,150 @@ class AiService {
     return null;
   }
 
+  relativeComparisonKind(message) {
+    const q = normalizeText(expandChatSlang(message));
+    if (/\b(re hon|gia thap hon|thap hon ve gia)\b/.test(q)) return 'cheaper';
+    if (/\b(dat hon|gia cao hon|cao hon ve gia)\b/.test(q)) return 'more_expensive';
+    if (/\b(size|co|kich thuoc).{0,20}(lon hon|to hon)\b|\b(lon hon|to hon).{0,20}(size|co|kich thuoc)\b/.test(q)) return 'larger_size';
+    if (/\b(size|co|kich thuoc).{0,20}(nho hon|be hon)\b|\b(nho hon|be hon).{0,20}(size|co|kich thuoc)\b/.test(q)) return 'smaller_size';
+    if (/\b(nhe hon|em hon|bam hon|tot hon)\b/.test(q)) return 'attribute';
+    return '';
+  }
+
+  referenceContext(message, history = []) {
+    const comparison = this.relativeComparisonKind(message);
+    if (!comparison) return null;
+    let sourceMessage = null;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      const item = history[index];
+      if (!['assistant', 'admin'].includes(item?.role)) continue;
+      const ids = Array.isArray(item.contextProductIds) && item.contextProductIds.length
+        ? item.contextProductIds
+        : item.productIds;
+      if (Array.isArray(ids) && ids.length) {
+        sourceMessage = item;
+        break;
+      }
+    }
+    if (!sourceMessage) return { comparison, products: [], ambiguous: false };
+
+    const variantByProduct = new Map((sourceMessage.contextVariants || []).map((item) => [
+      String(item?.productId || ''), String(item?.variantId || '')
+    ]));
+    const ids = uniqueStrings(sourceMessage.contextProductIds?.length
+      ? sourceMessage.contextProductIds
+      : sourceMessage.productIds).slice(0, 5);
+    const products = ids.map((id) => {
+      const product = this.productService?.getProduct?.(id);
+      if (!product) return null;
+      const variantId = variantByProduct.get(String(id));
+      const variantRecord = variantId ? this.productService?.getVariant?.(variantId) : null;
+      const variant = variantRecord?.variant || null;
+      return {
+        id: product.id,
+        name: product.name,
+        type: product.type,
+        brand: product.brand,
+        referenceVariantId: variant?.id || '',
+        referencePrice: Number(variant?.price || product.priceMin || 0),
+        referenceSize: cleanString(variant?.size, 30),
+        prices: [product.priceMin, product.priceMax],
+        sizes: cleanList(product.sizes, 20, 30)
+      };
+    }).filter(Boolean);
+    return { comparison, products, ambiguous: products.length > 1 };
+  }
+
+  applyRelativeComparison(route, message, history = []) {
+    const reference = this.referenceContext(message, history);
+    if (!reference) return route;
+    if (!reference.products.length || reference.ambiguous) {
+      return {
+        ...route,
+        action: 'ASK',
+        needDatabase: false,
+        showProducts: false,
+        needFinalAi: false,
+        responseMode: 'clarify',
+        clarificationQuestion: reference.ambiguous
+          ? 'Bạn muốn so với sản phẩm nào trong các mẫu vừa xem?'
+          : 'Bạn muốn so với sản phẩm nào? Bạn gửi tên hoặc mã sản phẩm giúp mình nhé.',
+        consultation: { ready: false, pendingField: 'referenceProduct', missingFields: ['referenceProduct'], aiManaged: false }
+      };
+    }
+
+    const product = reference.products[0];
+    const search = {
+      ...(route.search || {}),
+      codes: [],
+      productIds: [],
+      names: [],
+      excludeProductIds: uniqueStrings([...(route?.search?.excludeProductIds || []), product.id])
+    };
+    if (reference.comparison === 'cheaper' && product.referencePrice > 0) {
+      const ceiling = product.referencePrice - 1;
+      search.maxPrice = search.maxPrice === null || search.maxPrice === undefined
+        ? ceiling : Math.min(search.maxPrice, ceiling);
+    } else if (reference.comparison === 'more_expensive' && product.referencePrice > 0) {
+      const floor = product.referencePrice + 1;
+      search.minPrice = search.minPrice === null || search.minPrice === undefined
+        ? floor : Math.max(search.minPrice, floor);
+    } else if (['larger_size', 'smaller_size'].includes(reference.comparison)) {
+      const referenceSize = Number(String(product.referenceSize).replace(',', '.'));
+      if (!Number.isFinite(referenceSize)) {
+        return {
+          ...route,
+          action: 'ASK',
+          needDatabase: false,
+          showProducts: false,
+          needFinalAi: false,
+          responseMode: 'clarify',
+          clarificationQuestion: 'Bạn đang muốn so với size nào của sản phẩm vừa xem?',
+          consultation: { ready: false, pendingField: 'referenceSize', missingFields: ['referenceSize'], aiManaged: false }
+        };
+      }
+      const availableSizes = [...new Set(this.productService.products
+        .flatMap((item) => item.variants || [])
+        .map((variant) => cleanString(variant.size, 30))
+        .filter((size) => {
+          const numeric = Number(size.replace(',', '.'));
+          const sameScale = referenceSize >= 30 ? numeric >= 30 : numeric < 30;
+          return Number.isFinite(numeric) && sameScale && (reference.comparison === 'larger_size'
+            ? numeric > referenceSize : numeric < referenceSize);
+        }))];
+      search.sizes = availableSizes;
+    } else if (reference.comparison === 'attribute') {
+      const q = normalizeText(message);
+      const terms = /\bnhe hon\b/.test(q)
+        ? ['nhẹ', 'trọng lượng nhẹ']
+        : /\bem hon\b/.test(q)
+          ? ['êm', 'đệm êm']
+          : /\bbam hon\b/.test(q)
+            ? ['bám', 'độ bám']
+            : [];
+      if (terms.length) {
+        search.preferences = uniqueNeedGroups([...(search.preferences || []), {
+          label: `Ưu tiên ${terms[0]} hơn sản phẩm tham chiếu`, terms, scope: 'details'
+        }]);
+      }
+    }
+    return { ...route, search };
+  }
+
   seenProductIds(history = []) {
     return uniqueStrings(history.flatMap((item) => [
       ...(Array.isArray(item?.productIds) ? item.productIds : []),
       ...(Array.isArray(item?.contextProductIds) ? item.contextProductIds : [])
     ])).slice(-100);
+  }
+
+  customerEvidenceForContinuation(message, history = [], route = null) {
+    if (!['more', 'refine', 'continue'].includes(route?.consultation?.mode)) return message;
+    const previousCustomerMessages = history
+      .filter((item) => item?.role === 'user' && item?.text)
+      .slice(-3)
+      .map((item) => item.text);
+    return cleanString([...previousCustomerMessages, message].join(' '), 1500);
   }
 
   mergeSearchState(base = {}, current = {}, message = '') {
@@ -835,6 +1111,10 @@ class AiService {
       categories: uniqueStrings(groups(preserved.categories, current.categories)),
       colors: uniqueNormalizedStrings(groups(preserved.colors, relax.has('color') ? [] : current.colors)),
       sizes: uniqueNormalizedStrings(groups(preserved.sizes, relax.has('size') ? [] : current.sizes)),
+      excludeBrands: uniqueStrings(groups(preserved.excludeBrands, current.excludeBrands)),
+      excludeCategories: uniqueStrings(groups(preserved.excludeCategories, current.excludeCategories)),
+      excludeColors: uniqueNormalizedStrings(groups(preserved.excludeColors, current.excludeColors)),
+      excludeSizes: uniqueNormalizedStrings(groups(preserved.excludeSizes, current.excludeSizes)),
       customerNeeds: uniqueStrings(groups(preserved.customerNeeds, current.customerNeeds)),
       requirements: uniqueNeedGroups(groups(preserved.requirements, relax.has('requirements') ? [] : current.requirements)),
       preferences: uniqueNeedGroups(groups(preserved.preferences, relax.has('preferences') ? [] : current.preferences)),
@@ -860,6 +1140,7 @@ class AiService {
     if (!previous?.search) return route;
 
     const more = this.isMoreProductRequest(message);
+    const relativeComparison = this.relativeComparisonKind(message);
     const currentRules = this.codeSearchRules(message);
     const explicitNewSubject = Boolean(currentRules.categories.length || currentRules.productKind);
     const pending = previous?.consultation?.pendingField;
@@ -870,10 +1151,15 @@ class AiService {
       || currentRules.requirements.length
       || currentRules.preferences.length
       || currentRules.excludeTerms.length
+      || currentRules.excludeBrands.length
+      || currentRules.excludeCategories.length
+      || currentRules.excludeColors.length
+      || currentRules.excludeSizes.length
       || currentRules.minPrice !== null
       || currentRules.maxPrice !== null
       || currentRules.inStockOnly
       || currentRules.flexibleFields.length
+      || Boolean(relativeComparison)
       || (route?.search?.relaxConstraints || []).length
     );
     const refining = Boolean(!pending && !explicitNewSubject && hasFollowUpFilters);
@@ -912,6 +1198,7 @@ class AiService {
         : {
             ...(previous.consultation || {}),
             ...(route.consultation || {}),
+            mode: 'continue',
             ready: Boolean(route?.consultation?.ready)
           }
     };
@@ -1199,26 +1486,24 @@ class AiService {
   }
 
   finalizeProductRoute(route, message, history = []) {
-    const contextual = this.applyConversationContext(route, message, history);
-    const routeQuery = contextual?.search?.query || '';
-    const normalizedRouteQuery = canonicalSearchText(routeQuery);
-    const normalizedMessage = canonicalSearchText(message);
-    const contextualQuery = cleanString(
-      normalizedMessage && normalizedRouteQuery.includes(normalizedMessage)
-        ? routeQuery
-        : [routeQuery, message].filter(Boolean).join(' '),
-      1500
-    );
-    const merged = this.mergeCodeRules(contextual, contextualQuery);
-    const grounded = this.applyCatalogCategoryGrounding(merged, message, history);
-    const resolution = this.catalogResolution(contextualQuery);
+    // Chỉ lời khách là evidence. SearchPlan do AI sinh ra không được ghép ngược vào
+    // NORMALIZED_MESSAGE vì như vậy một suy đoán (ví dụ “cầu lông”, “Kelme”) sẽ tự xác nhận chính nó.
+    const resolution = this.catalogResolution(message);
+    const currentEvidence = resolution.query || message;
+    const contextual = this.applyConversationContext(route, currentEvidence, history);
+    const combinedEvidence = this.customerEvidenceForContinuation(currentEvidence, history, contextual);
+    const relative = this.applyRelativeComparison(contextual, currentEvidence, history);
+    const merged = this.mergeCodeRules(relative, combinedEvidence);
+    const evidenced = this.groundSearchPlanToCustomerEvidence(merged, combinedEvidence, history);
+    const specific = this.applyCatalogSpecificityGate(evidenced, currentEvidence, history);
+    const grounded = this.applyCatalogCategoryGrounding(specific, message, history);
     const consulted = this.applyConsultation({
       ...grounded,
       corrections: resolution.corrections,
       ambiguities: resolution.ambiguous,
       search: {
         ...grounded.search,
-        query: resolution.query || grounded.search.query
+        query: grounded.search.query || resolution.query
       }
     }, message);
     return this.applyAmbiguityClarification(consulted, resolution.ambiguous);
@@ -1272,6 +1557,11 @@ class AiService {
       const aiKind = this.detectedProductKind(category);
       return !rules.productKind || !aiKind || aiKind === rules.productKind;
     });
+    const excludeBrands = uniqueStrings([...(rules.excludeBrands || []), ...(search.excludeBrands || [])]);
+    const excludeCategories = uniqueStrings([...(rules.excludeCategories || []), ...(search.excludeCategories || [])]);
+    const excludeColors = uniqueNormalizedStrings([...(rules.excludeColors || []), ...(search.excludeColors || [])]);
+    const excludeSizes = uniqueNormalizedStrings([...(rules.excludeSizes || []), ...(search.excludeSizes || [])]);
+    const isExcluded = (value, exclusions) => exclusions.some((item) => normalizeText(item) === normalizeText(value));
 
     return this.applyCodeClarification({
       ...route,
@@ -1280,14 +1570,22 @@ class AiService {
         : codeShowProducts === null ? route.showProducts : codeShowProducts,
       search: {
         ...search,
-        brands: uniqueStrings([...(relax.has('brand') ? [] : rules.brands || []), ...(search.brands || [])]),
-        categories: uniqueStrings([...(rules.categories || []), ...aiCategories]),
-        colors: uniqueNormalizedStrings([...(relax.has('color') ? [] : rules.colors || []), ...aiColors]),
-        sizes: uniqueNormalizedStrings([...(relax.has('size') ? [] : rules.sizes || []), ...(search.sizes || [])]),
+        brands: uniqueStrings([...(relax.has('brand') ? [] : rules.brands || []), ...(search.brands || [])])
+          .filter((value) => !isExcluded(value, excludeBrands)),
+        categories: uniqueStrings([...(rules.categories || []), ...aiCategories])
+          .filter((value) => !isExcluded(value, excludeCategories)),
+        colors: uniqueNormalizedStrings([...(relax.has('color') ? [] : rules.colors || []), ...aiColors])
+          .filter((value) => !isExcluded(value, excludeColors)),
+        sizes: uniqueNormalizedStrings([...(relax.has('size') ? [] : rules.sizes || []), ...(search.sizes || [])])
+          .filter((value) => !isExcluded(value, excludeSizes)),
         customerNeeds: uniqueStrings([...(rules.customerNeeds || []), ...(search.customerNeeds || [])]),
         requirements: uniqueNeedGroups([...(relax.has('requirements') ? [] : rules.requirements), ...aiRequirements]),
         preferences: uniqueNeedGroups([...(relax.has('preferences') ? [] : rules.preferences), ...(search.preferences || [])]),
         excludeTerms: uniqueStrings([...rules.excludeTerms, ...aiExcludeTerms]),
+        excludeBrands,
+        excludeCategories,
+        excludeColors,
+        excludeSizes,
         flexibleFields: cleanFlexibleFields([
           ...(rules.flexibleFields || []),
           ...(search.flexibleFields || [])
@@ -1383,6 +1681,10 @@ class AiService {
         requirements: codeRules.requirements,
         preferences: codeRules.preferences,
         excludeTerms: codeRules.excludeTerms,
+        excludeBrands: codeRules.excludeBrands,
+        excludeCategories: codeRules.excludeCategories,
+        excludeColors: codeRules.excludeColors,
+        excludeSizes: codeRules.excludeSizes,
         flexibleFields: codeRules.flexibleFields,
         relaxConstraints: [],
         minPrice: codeRules.minPrice,
@@ -1640,6 +1942,10 @@ class AiService {
         categories: cleanList(search.categories, 8, 100),
         colors: cleanList(search.colors, 8, 80),
         sizes: cleanList(search.sizes, 10, 40),
+        excludeBrands: cleanList(search.excludeBrands, 8, 80),
+        excludeCategories: cleanList(search.excludeCategories, 8, 100),
+        excludeColors: cleanList(search.excludeColors, 8, 80),
+        excludeSizes: cleanList(search.excludeSizes, 10, 40),
         customerNeeds: cleanList(search.customerNeeds, 12, 160),
         requirements: cleanNeedGroups(search.requirements, 8, 8),
         preferences: cleanNeedGroups(search.preferences, 8, 8),
@@ -1760,12 +2066,14 @@ class AiService {
       limit: this.config.routerHistoryMessages,
       maxChars: this.config.routerHistoryChars
     });
+    const referenceContext = this.referenceContext(expandedMessage, history);
     const payload = {
       message: cleanString(message, 1500),
       normalizedMessage: cleanString(resolution.query, 1500),
       corrections: resolution.corrections,
       forceAi: Boolean(options.forceAi),
       conversationState: this.conversationState(history),
+      referenceContext,
       catalogProfile: this.productService?.getCatalogProfile?.({
         search: {
           query: [resolution.query, this.conversationState(history)?.query].filter(Boolean).join(' '),

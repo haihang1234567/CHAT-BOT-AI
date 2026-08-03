@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0 – Evidence hội thoại và bộ lọc loại trừ
+
+- Tách dữ kiện khách đã nói khỏi SearchPlan do AI suy luận, ngăn AI tự thêm môn hoặc hãng rồi tự xác nhận.
+- Hỏi loại/bộ môn từ taxonomy Haravan cho mọi nhóm tổng quát: giày, vợt, bóng, quần áo, túi, phụ kiện, bảo hộ và dụng cụ.
+- Thêm loại trừ có cấu trúc theo hãng, category, màu và size; màu/size bị loại được lọc đúng ở cấp biến thể.
+- So sánh “rẻ hơn/đắt hơn/size lớn hơn/nhỏ hơn” bằng sản phẩm và biến thể thật vừa hiển thị.
+- Không sửa edit-distance các từ giao tiếp ba ký tự sau khi bỏ dấu, tránh lỗi “hãy” thành “hay/han/hai”.
+
 ## 1.5.0 – AI điều phối và SQL catalog
 
 - Router AI chọn rõ `ASK`, `SEARCH`, `ANSWER` hoặc `HANDOFF` và quản lý dữ kiện qua nhiều lượt chat.

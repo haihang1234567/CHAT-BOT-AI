@@ -57,6 +57,18 @@ Ví dụ SearchPlan:
 `preferences` chỉ tăng thứ hạng. Voyage tìm ứng viên cho nhu cầu mềm như “êm
 chân” hoặc “bám đường”; ứng viên Voyage vẫn phải qua SQL và Evidence Gate.
 
+Các phủ định được tách theo scope: `excludeBrands`, `excludeCategories`,
+`excludeColors`, `excludeSizes` và `excludeTerms`. Với sản phẩm có cả màu đen và
+trắng, yêu cầu “không màu đen” giữ sản phẩm nhưng chỉ đưa biến thể trắng.
+
+Nếu khách chỉ nêu nhóm tổng quát, code kiểm tra taxonomy được dựng từ `type`
+Haravan và buộc Router hỏi nhánh công năng trước khi chạy SQL. Dữ kiện trong
+SearchPlan do AI sinh ra không được ghép ngược vào lời khách để tự xác nhận.
+
+Khi khách tham chiếu “cái vừa xem”, backend nạp lại giá/size của đúng
+`contextProductIds` và `matchedVariantId`; so sánh tương đối không phụ thuộc vào
+đoạn HISTORY đã bị cắt ngắn.
+
 ## Catalog Profile
 
 Không gửi toàn bộ hàng nghìn sản phẩm vào prompt. Mỗi lượt Router nhận:

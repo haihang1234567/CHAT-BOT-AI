@@ -38,6 +38,76 @@
       "decision": "search",
       "flexibleFields": ["budget"],
       "ready": true
+    },
+    {
+      "history": [],
+      "message": "áo cầu lông không phải màu đen",
+      "decision": "search",
+      "understanding": "áo cầu lông, loại biến thể màu đen",
+      "ready": true,
+      "excludeColors": ["đen"]
+    },
+    {
+      "history": [],
+      "message": "giày chạy bộ hãng nào cũng được trừ Mizuno",
+      "decision": "search",
+      "understanding": "giày chạy bộ, loại thương hiệu Mizuno",
+      "ready": true,
+      "excludeBrands": ["Mizuno"]
+    },
+    {
+      "history": ["Bot: Bạn cần size nào?"],
+      "message": "size nào cũng được nhưng không lấy 40",
+      "decision": "search",
+      "understanding": "không giới hạn size, loại size 40",
+      "flexibleFields": ["size"],
+      "excludeSizes": ["40"],
+      "ready": true
+    },
+    {
+      "history": [],
+      "message": "giày bóng đá sân cỏ nhân tạo nhưng đừng gợi ý FG",
+      "decision": "search",
+      "understanding": "giày bóng đá cỏ nhân tạo, loại đế FG",
+      "excludeTerms": ["FG"],
+      "ready": true
+    },
+    {
+      "history": [],
+      "message": "không muốn vợt cầu lông, tôi cần vợt pickleball",
+      "decision": "search",
+      "understanding": "vợt pickleball, loại vợt cầu lông",
+      "excludeCategories": ["Vợt Cầu Lông"],
+      "ready": true
+    },
+    {
+      "history": [],
+      "message": "giày Mizuno màu trắng nhưng không size 41",
+      "decision": "clarify",
+      "understanding": "giày Mizuno màu trắng, loại size 41; còn thiếu bộ môn hoặc mục đích",
+      "pendingField": "sport",
+      "excludeSizes": ["41"]
+    },
+    {
+      "history": [],
+      "message": "có vợt không",
+      "decision": "clarify",
+      "understanding": "khách mới nêu nhóm vợt, chưa nêu bộ môn",
+      "pendingField": "sport"
+    },
+    {
+      "history": [],
+      "message": "có phụ kiện không",
+      "decision": "clarify",
+      "understanding": "khách mới nêu nhóm phụ kiện, chưa nêu loại hoặc mục đích",
+      "pendingField": "sport"
+    },
+    {
+      "history": ["Bot đã hiển thị đúng một sản phẩm giá 2.000.000đ"],
+      "message": "có mẫu nào rẻ hơn cái vừa xem không",
+      "decision": "search",
+      "understanding": "giữ loại sản phẩm trước đó và tìm giá thấp hơn 2.000.000đ",
+      "ready": true
     }
   ]
 }
