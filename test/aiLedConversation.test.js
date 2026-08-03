@@ -26,6 +26,7 @@ function createServices() {
   const products = new ProductService('', 'https://shop.example', { loadCsv: false });
   products.replaceProducts([
     product('pickle-racket', 'Vợt Pickleball Promax P1', 'Vợt Pickleball'),
+    product('pickle-shoe', 'Giày Thể Thao Quần vợt/Pickleball Nữ', 'Giày Pickleball'),
     product('badminton-racket', 'Vợt Cầu Lông Promax B1', 'Vợt Cầu Lông'),
     product('volleyball-shoe', 'Giày Bóng Chuyền Promax V1', 'Giày Bóng Chuyền')
   ]);
@@ -133,6 +134,44 @@ test('AI hiểu “pcik đi” theo câu hỏi vợt trước đó và code ch�
   assert.equal(route.showProducts, true);
   assert.equal(route.consultation.ready, true);
   assert.ok(route.search.categories.some((category) => /pickleball/i.test(category)));
+  assert.deepEqual(results.map((item) => item.id), ['pickle-racket']);
+});
+
+test('AI hỏi lại giày hay vợt sau câu “pick” thì code giữ loại vợt đã xác nhận ở lượt trước', async () => {
+  const { ai, products } = createServices();
+  const previousRoute = ai.fallbackRoute('vợt');
+  const history = [
+    { role: 'user', text: 'vợt' },
+    {
+      role: 'assistant',
+      text: previousRoute.clarificationQuestion,
+      route: previousRoute
+    }
+  ];
+
+  ai.call = async () => JSON.stringify({
+    action: 'ASK',
+    intent: 'search_product',
+    needDatabase: true,
+    showProducts: false,
+    responseMode: 'clarify',
+    clarificationQuestion: 'Bạn muốn tìm giày pickleball hay vợt pickleball?',
+    consultation: { ready: false, pendingField: 'productKind' },
+    search: {
+      query: 'pickleball',
+      categories: ['pickleball'],
+      requirements: []
+    }
+  });
+
+  const route = await ai.route('pick', history);
+  const results = products.queryByPlan(route, 'pick', 5);
+
+  assert.deepEqual(route.search.categories, ['Vợt Pickleball']);
+  assert.ok(route.search.requirements.some((group) => /Loại sản phẩm: Vợt/i.test(group.label)));
+  assert.equal(route.consultation.pendingField, 'budget');
+  assert.match(route.clarificationQuestion, /ngân sách/i);
+  assert.doesNotMatch(route.clarificationQuestion, /giày pickleball hay vợt pickleball/i);
   assert.deepEqual(results.map((item) => item.id), ['pickle-racket']);
 });
 

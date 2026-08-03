@@ -1241,12 +1241,25 @@ class AiService {
           _catalogCategoryRejected: !undecided
         };
       }
+      const redundantPendingField = ['sport', 'productKind'].includes(
+        route?.consultation?.pendingField
+      );
       return {
         ...route,
+        ...(redundantPendingField ? {
+          action: 'SEARCH',
+          needDatabase: true,
+          showProducts: true,
+          needFinalAi: false,
+          responseMode: 'brief',
+          clarificationQuestion: ''
+        } : {}),
         search: { ...route.search, categories: pendingMatches },
         consultation: {
           ...(route.consultation || {}),
-          pendingField: ''
+          ready: redundantPendingField ? false : route?.consultation?.ready,
+          pendingField: '',
+          aiManaged: redundantPendingField ? false : route?.consultation?.aiManaged
         }
       };
     }
