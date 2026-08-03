@@ -110,7 +110,7 @@ function createServices() {
   products.replaceProducts([
     {
       id: 'pickle-shoe',
-      name: 'Giày Pickleball Diadora',
+      name: 'Giày Thể Thao Quần vợt/Pickleball Nữ K-Swiss SpeedEx 2',
       type: 'Giày Pickleball',
       tags: 'pickleball, giày',
       images: [],
@@ -183,6 +183,20 @@ test('hiểu “vợt pick” là vợt pickleball và không trả giày', () =
   assert.deepEqual(route.search.categories, ['Vợt Pickleball']);
   assert.equal(route.search.requirements.some((group) => group.label === 'Loại sản phẩm: Vợt'), true);
   assert.deepEqual(results.map((product) => product.id), ['pickle-racket']);
+});
+
+test('tên giày chứa “quần vợt/pickleball” không được vượt qua facet loại Vợt', async () => {
+  const { ai, products } = createServices();
+  const message = 'vợt pick đi';
+  const route = ai.fallbackRoute(message);
+
+  const keywordResults = products.queryByPlan(route, message, 5);
+  const hybridResults = await products.hybridQueryByPlan(route, message, 5);
+
+  assert.deepEqual(route.search.categories, ['Vợt Pickleball']);
+  assert.deepEqual(keywordResults.map((product) => product.id), ['pickle-racket']);
+  assert.deepEqual(hybridResults.map((product) => product.id), ['pickle-racket']);
+  assert.equal(hybridResults.some((product) => product.type === 'Giày Pickleball'), false);
 });
 
 test('code loại bỏ phân tích AI mâu thuẫn với loại sản phẩm khách hỏi', () => {

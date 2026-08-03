@@ -1,6 +1,11 @@
 const { SLANG_EXPANSION_TOKENS } = require('./chatSlangNormalizer');
 const { cosineSimilarity } = require('./embeddingService');
 const { CatalogDatabase } = require('./catalogDatabase');
+const {
+  catalogProductKind,
+  productKindMatches,
+  requiredProductKinds
+} = require('./catalogProductKind');
 
 function clean(value) {
   if (value === null || value === undefined) return '';
@@ -131,22 +136,6 @@ function formatVnd(value) {
   return `${Math.round(number).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')}₫`;
 }
 
-function catalogProductKind(value) {
-  const text = canonicalSearchText(value);
-  if (/(?:^|\s)giay(?:\s|$)/.test(text)) return 'shoe';
-  if (/(?:^|\s)(?:quan ao|trang phuc)(?:\s|$)/.test(text)) return 'apparel';
-  if (/(?:^|\s)(?:ao|polo|tee|jacket)(?:\s|$)/.test(text)) return 'shirt';
-  if (/(?:^|\s)(?:quan|short)(?:\s|$)/.test(text)) return 'pants';
-  if (/(?:^|\s)(?:tat|vo)(?:\s|$)/.test(text)) return 'socks';
-  if (/(?:^|\s)(?:balo|ba lo|tui)(?:\s|$)/.test(text)) return 'bag';
-  if (/(?:^|\s)(?:bao ho|ong dong|bang goi|bang co tay)(?:\s|$)/.test(text)) return 'protection';
-  if (/(?:^|\s)(?:phu kien)(?:\s|$)/.test(text)) return 'accessory';
-  if (/(?:^|\s)(?:dung cu|thiet bi)(?:\s|$)/.test(text)) return 'equipment';
-  if (/(?:^|\s)vot(?:\s|$)/.test(text)) return 'racket';
-  if (/(?:^|\s)(?:qua bong|trai bong|bong thi dau|bong)(?:\s|$)/.test(text)) return 'ball';
-  return 'other';
-}
-
 class ProductService {
   constructor(_legacyCsvPath, shopDomain, options = {}) {
     this.shopDomain = shopDomain;
@@ -173,6 +162,7 @@ class ProductService {
         url: clean(product.url) || this.shopDomain,
         brand: clean(product.brand),
         type: clean(product.type),
+        kind: catalogProductKind(product.type),
         tags: clean(product.tags),
         description: clean(product.description),
         excerpt: clean(product.excerpt),
@@ -361,7 +351,7 @@ class ProductService {
     let relevant = this.products.filter((product) => product.inStock);
     if (requestedTypes.length) {
       relevant = relevant.filter((product) => requestedTypes.some((type) => (
-        product.identityText.includes(type) || canonicalSearchText(product.type).includes(type)
+        termInText(canonicalSearchText(product.type), type)
       )));
     }
     if (requestedBrands.length) {
@@ -832,6 +822,10 @@ class ProductService {
   }
 
   productMatchesNeedGroup(product, group) {
+    const requiredKinds = requiredProductKinds([group]);
+    if (requiredKinds.length) {
+      return requiredKinds.some((kind) => productKindMatches(product.kind, kind));
+    }
     const haystack = group.scope === 'identity' ? product.identityText : product.searchText;
     return group.terms.some((term) => termInText(haystack, term));
   }
@@ -896,6 +890,10 @@ class ProductService {
       names: this.normalizedList(search.names),
       brands: this.normalizedList(search.brands),
       categories: this.normalizedList(search.categories),
+      productKinds: unique([
+        ...(search.productKinds || []),
+        ...requiredProductKinds(search.requirements)
+      ]),
       colors: this.normalizedList(search.colors),
       sizes: this.normalizedList(search.sizes),
       excludeBrands: this.normalizedList(search.excludeBrands),
@@ -969,14 +967,19 @@ class ProductService {
         brand === unwanted || productName.includes(unwanted)
       ))) continue;
 
+      if (filters.productKinds.length
+        && !filters.productKinds.some((kind) => productKindMatches(product.kind, kind))) continue;
+
       if (filters.categories.length) {
-        const matched = filters.categories.some((wanted) => searchable.includes(wanted));
+        const productType = canonicalSearchText(product.type);
+        const matched = filters.categories.some((wanted) => termInText(productType, wanted));
         if (!matched) continue;
         score += 150;
       }
 
-
-      if (filters.excludeCategories.some((unwanted) => termInText(product.identityText, unwanted))) continue;
+      if (filters.excludeCategories.some((unwanted) => (
+        termInText(canonicalSearchText(product.type), unwanted)
+      ))) continue;
 
       if (filters.names.length) {
         const matched = filters.names.some((wanted) => {
@@ -1045,6 +1048,7 @@ class ProductService {
     // Nếu AI bóc tách quá chặt làm rỗng kết quả, fallback sang tìm kiếm chữ để chatbot không bị “cụt”.
     const hasHardFilters = Boolean(
       filters.categories.length || filters.colors.length || filters.sizes.length
+      || filters.productKinds.length
       || filters.excludeBrands.length || filters.excludeCategories.length
       || filters.excludeColors.length || filters.excludeSizes.length
       || filters.minPrice !== null || filters.maxPrice !== null || filters.inStockOnly
@@ -1057,10 +1061,17 @@ class ProductService {
 
   queryByPlan(plan = {}, fallbackQuery = '', limit = 5, options = {}) {
     const search = plan?.search && typeof plan.search === 'object' ? plan.search : plan;
+    const effectiveSearch = {
+      ...search,
+      productKinds: unique([
+        ...(search.productKinds || []),
+        ...requiredProductKinds(search.requirements)
+      ])
+    };
     const safeLimit = Math.max(1, Math.min(50, Number(search.limit || limit || 5)));
     let sqlRows;
     try {
-      sqlRows = this.catalogDatabase.query({ ...search, query: search.query || fallbackQuery }, {
+      sqlRows = this.catalogDatabase.query({ ...effectiveSearch, query: search.query || fallbackQuery }, {
         limit: Math.max(safeLimit * 3, 12)
       });
     } catch (error) {
@@ -1089,6 +1100,7 @@ class ProductService {
     if (!verified.length && !options.strictFilters) {
       const hasHardConstraints = Boolean(
         (search.codes || []).length || (search.productIds || []).length || (search.categories || []).length
+        || effectiveSearch.productKinds.length
         || (search.brands || []).length || (search.colors || []).length || (search.sizes || []).length
         || (search.excludeBrands || []).length || (search.excludeCategories || []).length
         || (search.excludeColors || []).length || (search.excludeSizes || []).length

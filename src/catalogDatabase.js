@@ -1,4 +1,5 @@
 const { DatabaseSync } = require('node:sqlite');
+const { requiredProductKinds } = require('./catalogProductKind');
 
 function clean(value) {
   return String(value ?? '').trim();
@@ -59,6 +60,7 @@ class CatalogDatabase {
         normalized_brand TEXT NOT NULL,
         type TEXT NOT NULL,
         normalized_type TEXT NOT NULL,
+        product_kind TEXT NOT NULL,
         identity_text TEXT NOT NULL,
         search_text TEXT NOT NULL,
         in_stock INTEGER NOT NULL,
@@ -83,6 +85,7 @@ class CatalogDatabase {
         in_stock INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_products_type ON products(normalized_type);
+      CREATE INDEX IF NOT EXISTS idx_products_kind ON products(product_kind);
       CREATE INDEX IF NOT EXISTS idx_products_normalized_id ON products(normalized_id);
       CREATE INDEX IF NOT EXISTS idx_products_brand ON products(normalized_brand);
       CREATE INDEX IF NOT EXISTS idx_products_stock ON products(in_stock);
@@ -100,8 +103,8 @@ class CatalogDatabase {
     const insertProduct = this.db.prepare(`
       INSERT INTO products (
         id, normalized_id, name, normalized_name, brand, normalized_brand, type, normalized_type,
-        identity_text, search_text, in_stock, price_min, price_max
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        product_kind, identity_text, search_text, in_stock, price_min, price_max
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertVariant = this.db.prepare(`
       INSERT INTO variants (
@@ -119,7 +122,7 @@ class CatalogDatabase {
         insertProduct.run(
           clean(product.id), normalizeCode(product.id), clean(product.name), normalize(product.name),
           clean(product.brand), normalize(product.brand), clean(product.type), normalize(product.type),
-          clean(product.identityText), clean(product.searchText), product.inStock ? 1 : 0,
+          clean(product.kind), clean(product.identityText), clean(product.searchText), product.inStock ? 1 : 0,
           Number(product.priceMin || 0), Number(product.priceMax || 0)
         );
         for (const variant of product.variants || []) {
@@ -150,6 +153,10 @@ class CatalogDatabase {
       names: unique(search.names),
       brands: unique(search.brands),
       categories: unique(search.categories),
+      productKinds: unique([
+        ...(search.productKinds || []),
+        ...requiredProductKinds(search.requirements)
+      ]),
       colors: unique(search.colors),
       sizes: unique(search.sizes).map((size) => size.replace(/\s/g, '')),
       excludeBrands: unique(search.excludeBrands),
@@ -158,6 +165,7 @@ class CatalogDatabase {
       excludeSizes: unique(search.excludeSizes).map((size) => size.replace(/\s/g, '')),
       requirements: (Array.isArray(search.requirements) ? search.requirements : [])
         .map((group) => ({
+          label: clean(group?.label),
           scope: group?.scope === 'identity' ? 'identity' : 'details',
           terms: unique(group?.terms)
         }))
@@ -210,9 +218,14 @@ class CatalogDatabase {
         params.push(`%${brand}%`);
       }
     }
+    if (filters.productKinds.length) {
+      where.push(`p.product_kind IN (${placeholders(filters.productKinds.length)})`);
+      params.push(...filters.productKinds);
+      scores.push('450');
+    }
     if (filters.categories.length) {
-      where.push(`(${filters.categories.map(() => '(p.normalized_type LIKE ? OR p.identity_text LIKE ?)').join(' OR ')})`);
-      for (const category of filters.categories) params.push(`%${category}%`, `%${category}%`);
+      where.push(`(${filters.categories.map(() => 'p.normalized_type LIKE ?').join(' OR ')})`);
+      for (const category of filters.categories) params.push(`%${category}%`);
       scores.push('350');
     }
     for (const category of filters.excludeCategories) {
@@ -225,6 +238,7 @@ class CatalogDatabase {
       scores.push('500');
     }
     for (const group of filters.requirements) {
+      if (requiredProductKinds([group]).length) continue;
       const column = group.scope === 'identity' ? 'p.identity_text' : 'p.search_text';
       where.push(`(${group.terms.map(() => `${column} LIKE ?`).join(' OR ')})`);
       params.push(...group.terms.map((term) => `%${term}%`));
@@ -282,7 +296,8 @@ class CatalogDatabase {
       .slice(0, 10);
     const hasStructured = Boolean(
       filters.productIds.length || filters.codes.length || filters.names.length || filters.brands.length
-      || filters.categories.length || filters.colors.length || filters.sizes.length || filters.requirements.length
+      || filters.categories.length || filters.productKinds.length
+      || filters.colors.length || filters.sizes.length || filters.requirements.length
       || filters.excludeBrands.length || filters.excludeCategories.length
       || filters.excludeColors.length || filters.excludeSizes.length
       || filters.excludeTerms.length || filters.minPrice !== null || filters.maxPrice !== null
