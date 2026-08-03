@@ -8,6 +8,7 @@
 - So sánh “rẻ hơn/đắt hơn/size lớn hơn/nhỏ hơn” bằng sản phẩm và biến thể thật vừa hiển thị.
 - Không sửa edit-distance các từ giao tiếp ba ký tự sau khi bỏ dấu, tránh lỗi “hãy” thành “hay/han/hai”.
 - Khóa loại sản phẩm bằng facet `product_kind` và cột `type` Haravan, tránh tên “quần vợt/pickleball” khiến giày lọt vào kết quả vợt.
+- Giữ loại sản phẩm đã xác nhận qua câu trả lời ngắn nhiều lượt, không hỏi lại “giày hay vợt” sau khi khách đã chọn vợt.
 
 ## 1.5.0 – AI điều phối và SQL catalog
 
